@@ -1,0 +1,11 @@
+node_modules
+npm-debug.log
+.env
+.terraform
+*.tfstate
+*.tfstate.backup
+dist
+artifacts
+brain
+scratch
+.gemini
