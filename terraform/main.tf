@@ -39,6 +39,6 @@ resource "aws_apprunner_service" "app" {
 }
 
 # --- Variables ---
-variable "aws_region" { default = "sa-east-1" }
+variable "aws_region" { default = "us-east-1" }
 variable "environment" { default = "production" }
 variable "ecr_repository_url" { type = string }
