@@ -69,11 +69,19 @@ jobs:
       - name: Deploy to AWS App Runner (Staging)
         run: echo "Efetuando deploy no ambiente de STAGING..."
 
-  deploy-production:
+    deploy-production:
     needs: build-and-push
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
-    environment: production
     steps:
-      - name: Deploy to AWS App Runner (Production)
-        run: echo "Efetuando deploy no ambiente de PRODUÇÃO..."
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: sa-east-1
+
+      - name: Deploy to AWS App Runner
+        run: |
+          echo "Iniciando Deploy automático no App Runner..."
+          aws apprunner list-services --query "ServiceSummaryList[?ServiceName=='app-lacrei-saude'].ServiceArn" --output text | xargs -I {} aws apprunner start-deployment --service-arn {}
