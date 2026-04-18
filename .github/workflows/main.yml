@@ -2,9 +2,9 @@ name: CI/CD Pipeline Lacrei Saúde
 
 on:
   push:
-    branches: [ main, staging ]
+    branches: [ main, master, staging ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, master ]
 
 jobs:
   lint-and-test:
