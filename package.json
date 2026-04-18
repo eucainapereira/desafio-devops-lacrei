@@ -1,7 +1,7 @@
 {
   "name": "app-lacrei-saude",
   "version": "1.0.0",
-  "description": "Desafio Tcnico DevOps - Lacrei Sade",
+  "description": "Desafio Tcnico DevOps - Lacrei Saude",
   "main": "app.js",
   "scripts": {
     "start": "node app.js",
