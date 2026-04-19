@@ -32,7 +32,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: sa-east-1 # Build agora fixo em São Paulo
+          aws-region: sa-east-1
 
       - name: Login to Amazon ECR
         id: login-ecr
@@ -51,8 +51,14 @@ jobs:
         run: |
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          
+          # Tag da Branch (master/main)
           docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:${{ github.ref_name }}
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:${{ github.ref_name }}
+
+          # Tag LATEST (Obrigatória para o deploy da EC2)
+          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
 
   deploy-staging:
     needs: build-and-push
@@ -64,14 +70,16 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1 # Comando do App Runner continua na Virgínia
+          aws-region: us-east-1
 
       - name: Deploy to App Runner (Staging Environment)
         run: |
-          echo "Atualizando ambiente de STAGING na Virgínia com imagem de São Paulo..."
+          echo "Atualizando ambiente de STAGING na Virgínia..."
           SERVICE_ARN=$(aws apprunner list-services --region us-east-1 --query "ServiceSummaryList[?ServiceName=='app-lacrei-saude'].ServiceArn" --output text)
-          if [ -n "$SERVICE_ARN" ]; then
+          if [ -n "$SERVICE_ARN" ] && [ "$SERVICE_ARN" != "None" ]; then
             aws apprunner start-deployment --region us-east-1 --service-arn $SERVICE_ARN
+          else
+            echo "Serviço App Runner não encontrado ou ainda não provisionado."
           fi
 
   deploy-production:
