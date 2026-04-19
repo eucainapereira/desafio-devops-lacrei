@@ -17,3 +17,13 @@ describe("GET /config-check", () => {
     expect(response.body).toHaveProperty("secret_ready");
   });
 });
+
+describe("GET /status", () => {
+  it("deve retornar JSON com informações de status e uptime", async () => {
+    const response = await request(app).get("/status");
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toHaveProperty("status", "Service is up and running");
+    expect(response.body).toHaveProperty("uptime");
+    expect(response.body).toHaveProperty("timestamp");
+  });
+});
