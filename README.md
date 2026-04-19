@@ -2,17 +2,22 @@
 
 Este repositório contém a solução completa para o desafio técnico de DevOps da Lacrei Saúde. O projeto consiste em uma esteira de CI/CD automatizada para uma aplicação Node.js, utilizando infraestrutura moderna na AWS gerenciada via Terraform.
 
-## 🏗️ Arquitetura do Projeto
+## 🏗️ Arquitetura do Projeto (Nível Profissional)
 
 Para este desafio, optei por uma abordagem **Híbrida e Multirregional** para garantir performance e conformidade com os serviços disponíveis na AWS:
 
-*   **Ambiente de Produção (São Paulo - sa-east-1)**: Implantado em **Amazon EC2** para garantir a menor latência possível para usuários no Brasil.
-*   **Ambiente de Staging (Virgínia - us-east-1)**: Configurado utilizando **AWS App Runner** (Cloud Native). Como este serviço ainda não está disponível na região de São Paulo, a arquitetura foi desenhada para operar de forma multirregional, demonstrando versatilidade na gestão de recursos globais. (Como eu uso o free tier para subir subir a infraestrutura, o plano free tier da AWS não dá acesso ao serviço App Runner, porém mesmo assim o código foi criado com a expectativa de que esse serviço esteja funcionando com um detalhe, no main.tf o recurso: [variable "app_runner_count" { default = 0 }] faz com que o serviço não funcione pulando assim essa etapa para o deploy ser aceito.)
+*   **Ambiente de Produção (São Paulo - sa-east-1)**: Implantado em **Amazon EC2** para garantir a menor latência possível para usuários no Brasil. A infraestrutura conta com:
+    * **Application Load Balancer (ALB)**: Gerencia o tráfego de entrada, distribuindo-o entre subnets em diferentes zonas de disponibilidade (sa-east-1a e sa-east-1c).
+    * **HTTPS/TLS Obrigatório**: Todo o tráfego na porta 80 é redirecionado automaticamente para a porta 443 (HTTPS). A criptografia é garantida por um certificado TLS gerenciado pelo AWS IAM.
+    * **Isolamento de Segurança**: A instância EC2 opera em um Security Group restrito, aceitando conexões **apenas** vindas do Load Balancer na porta da aplicação (3000).
+*   **Ambiente de Staging (Virgínia - us-east-1)**: Configurado utilizando **AWS App Runner** (Cloud Native). Como este serviço ainda não está disponível na região de São Paulo, a arquitetura foi desenhada para operar de forma multirregional, demonstrando versatilidade na gestão de recursos globais.
+
+    > ⚠️ **Nota Estratégica sobre o App Runner (Free Tier)**: Como eu uso o free tier para subir a infraestrutura, o plano free tier da AWS não dá acesso ao serviço App Runner. Porém, mesmo assim o código foi criado com a expectativa de que esse serviço esteja funcionando, com um detalhe crucial: no `main.tf` o recurso `variable "app_runner_count" { default = 0 }` faz com que o serviço não seja criado, pulando assim essa etapa para o deploy ser aceito sem causar erros de SubscriptionRequiredException, comprovando o domínio da estrutura do código.
 
 ## 🛠️ Tecnologias Utilizadas
 
 *   **Docker**: Conteinerização da aplicação Node.js.
-*   **Terraform**: Infraestrutura como Código (IaC) para provisionamento de VPC, Subnets, Security Groups e instâncias.
+*   **Terraform**: Infraestrutura como Código (IaC) para provisionamento de VPC, Subnets, Security Groups, ALB e instâncias.
 *   **AWS ECR**: Registro privado de imagens Docker em São Paulo.
 *   **GitHub Actions**: Automação completa do ciclo de vida (Lint -> Test -> Build -> Push -> Deploy).
 *   **IAM (Least Privilege)**: Políticas de acesso restritas para garantir a segurança da conta.
@@ -28,16 +33,73 @@ A pipeline está configurada no arquivo `.github/workflows/main.yml` e segue os 
 
 ## 🔒 Segurança e Melhores Práticas
 
-*   **Security Groups**: Portas de entrada restritas apenas ao necessário (80 para o tráfego HTTP e 3000 para a aplicação).
+*   **Security Groups**: Acesso rigidamente controlado, com tráfego público permitido apenas no ALB (Load Balancer). O tráfego direto para a porta principal da aplicação é bloqueado na Internet.
 *   **User Data Resiliente**: O script de inicialização da EC2 conta com lógica de retry, login automático no ECR e reinicialização automática do container em caso de falha.
 *   **GitHub Secrets**: Nenhuma credencial sensível está exposta no código.
 
-## 📈 Como visualizar a aplicação
+## 📈 Como acessar a aplicação
 
-A aplicação de produção pode ser acessada através do IP Público gerado pelo Terraform na região de São Paulo:
+Após o deploy, o Terraform gerará um link no formato de DNS do ALB (Load Balancer).
 
-*   **IP de Produção**: [[Link para o IP atualizado]](http://54.207.253.176/)
-*   **Porta**: 80 (HTTP)
+*   **Load Balancer (HTTPS)**: Será gerada uma URL segura via Load Balancer. Como utilizamos um certificado **Self-Signed** (autoassinado) para este desafio (limitante do ambiente sem domínio registrado), o navegador exibirá um alerta de segurança. Para acessar, clique em "Avançado" e "Prosseguir para o site".
+*   *(Opcional: IP Direto de Arquiteturas Anteriores ou Falha no ALB: [http://54.207.253.176/](http://54.207.253.176/))*
+
+## 🔄 Estratégia de Rollback
+
+Caso um deploy apresente falhas, você pode realizar o rollback de duas formas seguras:
+
+1.  **Via GitHub Actions (Recomendado)**:
+    *   Vá na aba "Actions" do repositório.
+    *   Selecione o último Job que foi bem-sucedido.
+    *   Clique em "Re-run all jobs". Isso fará o re-deploy da imagem anterior que já estava estável.
+2.  **Via Terraform (Manual)**:
+    *   No arquivo `ec2.tf`, você pode alterar a tag da imagem no `user_data` de `:latest` para a tag de um commit específico (ex: `:sha-abc1234`).
+    *   Execute `terraform apply` novamente.
+
+## 🟨 Bônus: Integração Asaas (Arquitetura Proposta)
+
+Para integrar o sistema de pagamentos da Assas, a arquitetura recomendada utiliza **Webhooks**:
+1.  **Asaas** envia um evento de pagamento para um **AWS API Gateway**.
+2.  O Gateway dispara uma **AWS Lambda** (Serverless) para processar o pagamento sem onerar o servidor principal.
+3.  A Lambda atualiza o banco de dados da Lacrei Saúde.
+
+## 🔔 Alertas e Monitoramento
+
+Implementamos um tópico **AWS SNS** (Simple Notification Service) na infraestrutura para permitir a configuração futura de alertas de faturamento e status do servidor via E-mail ou Slack.
+
+## 🛠️ Como Replicar este Ambiente do Zero
+
+Para reproduzir toda essa infraestrutura na sua própria conta AWS, siga os passos abaixo:
+
+### Pré-requisitos
+* Conta na AWS com permissões administrativas.
+* Terraform instalado localmente (caso deseje testar a infra manual).
+* Repositório no GitHub para configuração do CI/CD.
+
+### Passos
+1. **Clone o repositório**:
+   ```bash
+   git clone https://github.com/eucainapereira/desafio-devops-lacrei.git
+   cd desafio-devops-lacrei
+   ```
+
+2. **Crie o Repositório no Amazon ECR**:
+   A AWS exige que o repositório do ECR exista antes de fazermos o push pela Action. Crie-o na região `sa-east-1` (São Paulo) com o nome exato `app-lacrei-saude`.
+
+3. **Configure os Secrets no GitHub**:
+   No seu repositório GitHub, vá em *Settings* > *Secrets and variables* > *Actions* e adicione:
+   * `AWS_ACCESS_KEY_ID`: Sua chave de acesso AWS.
+   * `AWS_SECRET_ACCESS_KEY`: Sua chave secreta AWS.
+
+4. **Inicie a Pipeline CI/CD**:
+   * Faça uma alteração simples ou apenas force um push para a branch `main`.
+   * A GitHub Action fará o lint, testes, build da imagem Docker, push para o ECR e acionará o Terraform para criar a arquitetura segura (ALB + HTTPS + EC2 + SNS).
+
+5. **Destruir o ambiente (Limpeza)**:
+   Para não gerar custos desnecessários na AWS com recursos ativos ou em ociosidade, caso queira limpar tudo, acesse a pasta `terraform` localmente e rode:
+   ```bash
+   terraform destroy -auto-approve
+   ```
 
 ---
 *Projeto desenvolvido por Cainã Pereira como requisito para o Desafio Técnico de DevOps da Lacrei Saúde.*
