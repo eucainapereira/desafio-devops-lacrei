@@ -57,7 +57,7 @@ resource "aws_iam_instance_profile" "ec2_profile" {
 
 # --- Instancia EC2 ---
 resource "aws_instance" "app_server" {
-  ami           = "ami-04b4c9752b75f4109" # Amazon Linux 2023 em sa-east-1
+  ami           = "ami-038c3e06c692ac6c5" # Amazon Linux 2023 em sa-east-1
   instance_type = "t3.micro"
   
   subnet_id                   = aws_subnet.public.id
