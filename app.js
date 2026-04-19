@@ -24,6 +24,14 @@ app.get("/health", (req, res) => {
   res.status(200).send("OK");
 });
 
+app.get("/status", (req, res) => {
+  res.json({
+    status: "Service is up and running",
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString()
+  });
+});
+
 app.get("/config-check", (req, res) => {
   const isDbConfigured = DATABASE_URL !== "No configurada";
   const isSecretConfigured = API_SECRET_KEY !== "No configurada";
