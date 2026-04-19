@@ -63,9 +63,24 @@ Para integrar o sistema de pagamentos da Assas, a arquitetura recomendada utiliz
 2.  O Gateway dispara uma **AWS Lambda** (Serverless) para processar o pagamento sem onerar o servidor principal.
 3.  A Lambda atualiza o banco de dados da Lacrei Saúde.
 
-## 🔔 Alertas e Monitoramento
+## 🔔 Alertas e Monitoramento (Bônus)
 
 Implementamos um tópico **AWS SNS** (Simple Notification Service) na infraestrutura para permitir a configuração futura de alertas de faturamento e status do servidor via E-mail ou Slack.
+
+Além disso, para comprovar a capacidade de monitoramento local em tempo real, uma stack do **Grafana** foi acoplada de forma 100% automatizada e como código (IaC):
+* O script de `user_data` do Terraform instancia um container Docker oficial do Grafana Enterprise.
+* Um Target Group e Listener atrelados ao Application Load Balancer foram provisionados para direcionar requisições da porta `3001` até a interface do Grafana.
+* Acesso imediato às validações via porta `3001` do DNS seguro do seu ALB.
+
+## 🛡️ Checklist de Segurança Aplicado
+
+Em cumprimento às regras e melhores princípios de DevOps/DevSecOps de alto nível em nuvem, este projeto atende integralmente a esse checklist estrutural:
+
+- [x] **Least Privilege (IAM)**: Uso de políticas JSON restritas a serviços exatos (ec2, ecr, sns, elb), garantindo que a credencial fornecida não possa apagar ou comprometer infraestruturas paralelas da conta.
+- [x] **Isolamento Interno de Redes (Security Groups)**: Instância sem exposição em pontas. O Target Group bloqueia acessos externos diretos na EC2, autorizando navegação nas portas dos containers apenas e se advindas do escudo do Load Balancer.
+- [x] **Criptografia em Trânsito (HTTPS/TLS)**: Configuração minuciosa para adoção do Load Balancer e Listener 443 certificado por TLS/IAM, exigido contratualmente para navegação selada, com redirecionamento ativo Anti-HTTP(80).
+- [x] **Vaults e Secrets Seguros**: Transição limpa de dados sigilosos; Chaves de autenticação injetadas sob-demanda do Painel Oculto de Repositórios do GitHub Actions e não commitadas fisicamente via texto-plano.
+- [x] **Containerização Rastrével e Segura**: Resiliência ativada ao `restart always`. Pull da imagem rastreada diretamente do Amazon ECR após ciclo completo formal de CI/CD (Lint > Testes de unidade). 
 
 ## 🛠️ Como Replicar este Ambiente do Zero
 
