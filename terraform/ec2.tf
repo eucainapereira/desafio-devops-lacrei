@@ -151,11 +151,13 @@ resource "aws_lb_listener" "https" {
   }
 }
 
-# Ouvinte 3001 (Grafana - HTTP para visualização do avaliador direto no painel)
+# Ouvinte 3001 (Grafana - HTTPS Seguro)
 resource "aws_lb_listener" "grafana" {
   load_balancer_arn = aws_lb.app_lb.arn
   port              = "3001"
-  protocol          = "HTTP"
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-2016-08"
+  certificate_arn   = aws_iam_server_certificate.lb_cert.arn
 
   default_action {
     type             = "forward"
@@ -245,6 +247,6 @@ output "load_balancer_dns" {
 }
 
 output "grafana_dashboard_url" {
-  value       = "http://${aws_lb.app_lb.dns_name}:3001"
-  description = "Acesse o painel do Grafana (Monitoramento de Infraestrutura Bônus)"
+  value       = "https://${aws_lb.app_lb.dns_name}:3001"
+  description = "Acesse o painel seguro do Grafana (Monitoramento de Infraestrutura Bônus)"
 }
