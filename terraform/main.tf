@@ -9,22 +9,46 @@ provider "aws" {
   region = "us-east-1"
 }
 
-# --- VPC & Networking ---
+# --- VPC & Networking (São Paulo) ---
 resource "aws_vpc" "main" {
   cidr_block           = "10.0.0.0/16"
   enable_dns_hostnames = true
   tags = { Name = "lacrei-saude-vpc" }
 }
 
+# Criar o Internet Gateway (Portão da Internet)
+resource "aws_internet_gateway" "igw" {
+  vpc_id = aws_vpc.main.id
+  tags   = { Name = "lacrei-igw" }
+}
+
 resource "aws_subnet" "public" {
-  vpc_id     = aws_vpc.main.id
-  cidr_block = "10.0.1.0/24"
-  tags       = { Name = "lacrei-public-subnet" }
+  vpc_id                  = aws_vpc.main.id
+  cidr_block              = "10.0.1.0/24"
+  map_public_ip_on_launch = true
+  tags                    = { Name = "lacrei-public-subnet" }
+}
+
+# Criar a Tabela de Rotas para apontar para o Internet Gateway
+resource "aws_route_table" "public_rt" {
+  vpc_id = aws_vpc.main.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.igw.id
+  }
+
+  tags = { Name = "lacrei-public-rt" }
+}
+
+# Associar a Subnet com a Tabela de Rotas
+resource "aws_route_table_association" "public_assoc" {
+  subnet_id      = aws_subnet.public.id
+  route_table_id = aws_route_table.public_rt.id
 }
 
 /* 
 # --- AWS App Runner (CONFIGURAÇÃO PARA STAGING) ---
-# Se for ativar, lembre-se de usar: provider = aws.virginia
 resource "aws_apprunner_service" "app" {
   provider     = aws.virginia
   count        = var.app_runner_count 
