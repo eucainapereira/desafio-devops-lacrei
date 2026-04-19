@@ -3,7 +3,6 @@
 Este repositório contém a solução completa para o desafio técnico de DevOps da Lacrei Saúde. O projeto consiste em uma esteira de CI/CD automatizada para uma aplicação Node.js, utilizando infraestrutura moderna na AWS gerenciada via Terraform.
 
 ## 🏗️ Arquitetura do Projeto
-
 Para este desafio, optei por uma abordagem **Híbrida e Multirregional** para garantir performance e conformidade com os serviços disponíveis na AWS:
 
 *   **Ambiente de Produção (São Paulo - sa-east-1)**: Implantado em **Amazon EC2** para garantir a menor latência possível para usuários no Brasil. A infraestrutura conta com:
@@ -81,6 +80,17 @@ Em cumprimento às regras e melhores princípios de DevOps/DevSecOps de alto ní
 - [x] **Criptografia em Trânsito (HTTPS/TLS)**: Configuração minuciosa para adoção do Load Balancer e Listener 443 certificado por TLS/IAM, exigido contratualmente para navegação selada, com redirecionamento ativo Anti-HTTP(80).
 - [x] **Vaults e Secrets Seguros**: Transição limpa de dados sigilosos; Chaves de autenticação injetadas sob-demanda do Painel Oculto de Repositórios do GitHub Actions e não commitadas fisicamente via texto-plano.
 - [x] **Containerização Rastrével e Segura**: Resiliência ativada ao `restart always`. Pull da imagem rastreada diretamente do Amazon ECR após ciclo completo formal de CI/CD (Lint > Testes de unidade). 
+
+## 🗃️ Registro de Decisões e Troubleshooting (Post-Mortem)
+
+Durante o desenvolvimento do ambiente, priorizamos respostas técnicas em cenários reais de engenharia. Apresentamos abaixo os principais desafios e as respectivas soluções implementadas de forma a evidenciar as tomadas de decisão gerenciais do projeto:
+
+| Problema / Erro Observado no Deploy | Análise e Decisão Arquitetural |
+| :--- | :--- |
+| **Limitação AWS Free Tier (App Runner)**<br>O deploy falhava por `SubscriptionRequiredException` ao invocar um serviço Premium da nuvem inviável para o momento. | **Decisão**: Alteramos a variável atrelada ao provisionamento do Staging para `app_runner_count = 0`. O código em `main.tf` para App Runner foi preservado e está funcional metodicamente, mas desativado como demonstração de *Feature Toggle* inteligente para segurar custos. |
+| **Erros de State Drift (Terraform `EntityAlreadyExists`)**<br>Os testes geravam travamentos com "TargetGroup already exists" ou conflitos de certificados durante as múltiplas reconstruções. | **Decisão**: Abolimos regras de nomenclaturas rígidas nos recursos ("hardcoded strings"). Adotamos geradores dinâmicos como `name_prefix` no lugar de `name` e criamos instâncias aleatórias atreladas ao helper `random_id`, permitindo imutabilidade paralela contínua a cada novo `apply`. |
+| **Quedas por Permissões no GitHub Actions (`UnauthorizedOperation`)**<br>Bloqueio do pipeline ao criar roteamentos avançados (ALB) exigindo níveis maiores da política IAM. | **Decisão**: Aplicação estrita de *Least Privilege*. Sem o uso de "Admin Access", validamos linha a linha e mapeamos chaves exclusivas de `elasticloadbalancing:*`, `sns:*`, `iam:PassRole` acoplando as edições na policy anexada. |
+| **Limitação do CloudWatch Agent no Nível Gratuito**<br>A injeção do agente não sincronizava instâncias de logs corretamente ou exigia Roles avançados de log que pesavam a estrutura base. | **Decisão**: Decisões visuais ágeis *("Shift Left")*: Alteramos a premissa analítica incluindo localmente a dependência corporativa **Grafana Enterprise** via conteinerização nativa no próprio `user_data` - demonstrando automação de painéis paralelos operando sob tráfego próprio via porta 3001 nativa. |
 
 ## 🛠️ Como Replicar este Ambiente do Zero
 
