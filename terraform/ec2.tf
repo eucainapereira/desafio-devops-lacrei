@@ -1,9 +1,9 @@
-# Auxiliar para evitar conflitos de nomes se o state for perdido
+# Auxiliar para evitar conflitos de nomes
 resource "random_id" "role_suffix" {
   byte_length = 2
 }
 
-# --- Security Group para a EC2 ---
+# --- Security Group para a EC2 (Usa o provedor padrão: São Paulo) ---
 resource "aws_security_group" "ec2_sg" {
   name        = "lacrei-app-sg-${random_id.role_suffix.hex}"
   description = "Permitir transito para a app Lacrei"
@@ -31,7 +31,7 @@ resource "aws_security_group" "ec2_sg" {
   }
 }
 
-# --- IAM Role para a EC2 acessar o ECR ---
+# --- IAM Role ---
 resource "aws_iam_role" "ec2_ecr_role" {
   name = "lacrei-ec2-role-${random_id.role_suffix.hex}"
 
@@ -55,9 +55,9 @@ resource "aws_iam_instance_profile" "ec2_profile" {
   role = aws_iam_role.ec2_ecr_role.name
 }
 
-# --- Instancia EC2 ---
+# --- Instancia EC2 (São Paulo) ---
 resource "aws_instance" "app_server" {
-  ami           = "ami-03c0041ef655f4420" # Amazon Linux 2023 em sa-east-1 (São Paulo)
+  ami           = "ami-03c0041ef655f4420" # Amazon Linux 2023 em sa-east-1
   instance_type = "t3.micro"
   
   subnet_id                   = aws_subnet.public.id
