@@ -2,7 +2,7 @@
 
 Este repositório contém a solução completa para o desafio técnico de DevOps da Lacrei Saúde. O projeto consiste em uma esteira de CI/CD automatizada para uma aplicação Node.js, utilizando infraestrutura moderna na AWS gerenciada via Terraform.
 
-## 🏗️ Arquitetura do Projeto (Nível Profissional)
+## 🏗️ Arquitetura do Projeto
 
 Para este desafio, optei por uma abordagem **Híbrida e Multirregional** para garantir performance e conformidade com os serviços disponíveis na AWS:
 
