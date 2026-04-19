@@ -81,7 +81,7 @@ Em cumprimento às regras e melhores princípios de DevOps/DevSecOps de alto ní
 - [x] **Vaults e Secrets Seguros**: Transição limpa de dados sigilosos; Chaves de autenticação injetadas sob-demanda do Painel Oculto de Repositórios do GitHub Actions e não commitadas fisicamente via texto-plano.
 - [x] **Containerização Rastrével e Segura**: Resiliência ativada ao `restart always`. Pull da imagem rastreada diretamente do Amazon ECR após ciclo completo formal de CI/CD (Lint > Testes de unidade). 
 
-## 🗃️ Registro de Decisões e Troubleshooting (Post-Mortem)
+## 🗃️ Registro de Decisões e Troubleshooting
 
 Durante o desenvolvimento do ambiente, priorizamos respostas técnicas em cenários reais de engenharia. Apresentamos abaixo os principais desafios e as respectivas soluções implementadas de forma a evidenciar as tomadas de decisão gerenciais do projeto:
 
