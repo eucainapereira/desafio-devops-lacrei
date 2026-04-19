@@ -75,10 +75,10 @@ resource "aws_lb" "app_lb" {
 }
 
 resource "aws_lb_target_group" "tg" {
-  name     = "lacrei-saude-tg"
-  port     = 3000
-  protocol = "HTTP"
-  vpc_id   = aws_vpc.main.id
+  name_prefix = "lactg-"
+  port        = 3000
+  protocol    = "HTTP"
+  vpc_id      = aws_vpc.main.id
 
   health_check {
     path                = "/health"
