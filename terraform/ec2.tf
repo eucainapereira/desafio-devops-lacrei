@@ -60,7 +60,6 @@ resource "aws_instance" "app_server" {
   iam_instance_profile        = aws_iam_instance_profile.ec2_profile.id
   associate_public_ip_address = true
 
-  # Script para instalar Docker e rodar a aplicação ao iniciar
   user_data = <<-EOF
               #!/bin/bash
               yum update -y
@@ -68,7 +67,6 @@ resource "aws_instance" "app_server" {
               systemctl start docker
               systemctl enable docker
               
-              # Login no ECR e Run do Container
               aws ecr get-login-password --region sa-east-1 | docker login --username AWS --password-stdin 873011686071.dkr.ecr.sa-east-1.amazonaws.com
               docker run -d -p 80:3000 --name app-lacrei 873011686071.dkr.ecr.sa-east-1.amazonaws.com/app-lacrei-saude:latest
               EOF
