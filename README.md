@@ -1,76 +1,43 @@
-# Desafio DevOps - Lacrei Saúde
+# Desafio Técnico DevOps - Lacrei Saúde 🚀
 
-Este projeto contém a solução completa para o desafio de DevOps, incluindo Dockerização, CI/CD, AWS e Observabilidade.
+Este repositório contém a solução completa para o desafio técnico de DevOps da Lacrei Saúde. O projeto consiste em uma esteira de CI/CD automatizada para uma aplicação Node.js, utilizando infraestrutura moderna na AWS gerenciada via Terraform.
 
-## 🚀 Estrutura do Projeto
+## 🏗️ Arquitetura do Projeto
 
-- `app.js`: Aplicação Node.js com Express e gerenciamento de segredos.
-- `app.test.js`: Testes automatizados (Jest + Supertest).
-- `Dockerfile`: Build multi-stage otimizado.
-- `.github/workflows/main.yml`: Pipeline completa de CI/CD.
+Para este desafio, optei por uma abordagem **Híbrida e Multirregional** para garantir performance e conformidade com os serviços disponíveis na AWS:
 
-## 🛠️ Pipeline CI/CD (GitHub Actions)
+*   **Ambiente de Produção (São Paulo - sa-east-1)**: Implantado em **Amazon EC2** para garantir a menor latência possível para usuários no Brasil.
+*   **Ambiente de Staging (Virgínia - us-east-1)**: Configurado utilizando **AWS App Runner** (Cloud Native). Como este serviço ainda não está disponível na região de São Paulo, a arquitetura foi desenhada para operar de forma multirregional, demonstrando versatilidade na gestão de recursos globais.
 
-A pipeline é acionada em cada `push` ou `pull_request` para as branches `main` e `staging`.
+## 🛠️ Tecnologias Utilizadas
 
-1.  **Lint & Test**: Executa `eslint` para garantir a qualidade do código e `jest` para os testes funcionais.
-2.  **Build & Push**: Constrói a imagem Docker e a envia para o **Amazon ECR**.
-3.  **Deploy**:
-    *   **Staging**: Deploy automático quando há push na branch `staging`.
-    *   **Production**: Deploy automático quando há push na branch `main` (requer aprovação se configurado via GitHub Environments).
+*   **Docker**: Conteinerização da aplicação Node.js.
+*   **Terraform**: Infraestrutura como Código (IaC) para provisionamento de VPC, Subnets, Security Groups e instâncias.
+*   **AWS ECR**: Registro privado de imagens Docker em São Paulo.
+*   **GitHub Actions**: Automação completa do ciclo de vida (Lint -> Test -> Build -> Push -> Deploy).
+*   **IAM (Least Privilege)**: Políticas de acesso restritas para garantir a segurança da conta.
 
-## 🌍 Ambientes
+## 🚀 Esteira CI/CD
 
-| Ambiente | Host (Exemplo) | Descrição |
-| :--- | :--- | :--- |
-| **Staging** | `staging.lacreisaude.com.br` | Validação de novas features. |
-| **Production** | `app.lacreisaude.com.br` | Ambiente final de usuários. |
+A pipeline está configurada no arquivo `.github/workflows/main.yml` e segue os seguintes passos:
 
-## 🔄 Estratégia de Rollback
+1.  **Lint & Test**: Validação de código e execução de testes unitários.
+2.  **Build & Push**: Geração da imagem Docker e envio para o Amazon ECR (sa-east-1) com tags de SHA e `latest`.
+3.  **Deploy Staging**: Disparado automaticamente em pushes para a branch `staging`.
+4.  **Deploy Production**: Disparado em pushes para `main` ou `master`, utilizando o Terraform para atualizar a infraestrutura e o runtime da aplicação.
 
-Em caso de falha no deploy:
-1.  **Via Git**: Reverter o commit problemático na branch correspondente.
-2.  **Via Docker**: Fazer o re-tag da imagem anterior estável no ECR para a tag do ambiente e disparar o redeploy.
-3.  **Via AWS Console**: Utilizar o recurso de "Rollback" do AWS App Runner ou ECS para voltar para a versão anterior.
+## 🔒 Segurança e Melhores Práticas
 
-## 🏗️ Arquitetura de Infraestrutura (IaC)
+*   **Security Groups**: Portas de entrada restritas apenas ao necessário (80 para o tráfego HTTP e 3000 para a aplicação).
+*   **User Data Resiliente**: O script de inicialização da EC2 conta com lógica de retry, login automático no ECR e reinicialização automática do container em caso de falha.
+*   **GitHub Secrets**: Nenhuma credencial sensível está exposta no código.
 
-A infraestrutura é gerenciada via **Terraform**, garantindo que os ambientes de Staging e Produção sejam idênticos e replicáveis.
+## 📈 Como visualizar a aplicação
 
-```mermaid
-graph TD
-    subgraph AWS Cloud
-        VPC[VPC Lacrei]
-        subgraph Public Subnet
-            AR[AWS App Runner]
-        end
-        ECR[(Amazon ECR)]
-        CW[CloudWatch Logs]
-    end
-    GH[GitHub Actions] -->|Push Image| ECR
-    GH -->|Deploy| AR
-    AR -->|Write Logs| CW
-```
+A aplicação de produção pode ser acessada através do IP Público gerado pelo Terraform na região de São Paulo:
 
-## 🔐 Checklist de Segurança (Reforçado)
-
-*   **🔒 Secrets**: Gerenciados via GitHub Secrets e injetados em tempo de execução (evitando `Hardcoded Secrets`).
-*   **🛡️ App Security**: Implementado middleware **Helmet** para proteção contra ataques comuns de web (XSS, Clickjacking, etc).
-*   **🌐 Network**: Configuração de **CORS** restritivo para aceitar apenas origens oficiais.
-*   **🐋 Docker Scan**: Imagem base `alpine` para reduzir a superfície de ataque.
-
-## 📊 Observabilidade e Monitoramento
-
-*   **Logs**: Integrados ao **Amazon CloudWatch Logs**. Todos os logs do container e do deploy são centralizados.
-*   **Alertas**: Configurados via CloudWatch Alarms para notificar via SNS (e-mail/Slack) em caso de erros 5XX ou alta latência.
-*   **Monitoramento**: Sugerido o uso de **Grafana** ou **New Relic** para métricas de performance da aplicação (APM).
-
-## 💳 Integração Assas (Arquitetura)
-
-Para a integração com o Assas:
-*   Utilizamos um **Webhook Handler** na nossa API para receber notificações de pagamento.
-*   As chaves de API do Assas são armazenadas no **AWS Secrets Manager** para segurança extra.
-*   Implementamos um **Mock Service** para testes em ambiente de staging.
+*   **IP de Produção**: [Link para o IP atualizado]
+*   **Porta**: 80 (HTTP)
 
 ---
-🤖 Gerado para o desafio técnico da Lacrei Saúde.
+*Projeto desenvolvido por [Seu Nome] como requisito para o Desafio Técnico de DevOps da Lacrei Saúde.*
