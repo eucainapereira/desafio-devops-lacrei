@@ -14,7 +14,7 @@ const API_SECRET_KEY = process.env.API_SECRET_KEY || "No configurada";
 
 app.get("/", (req, res) => {
   res.json({
-    message: "Bem-vindo ao App Lacrei Sade!",
+    message: "Bem-vindo ao App Lacrei Saude!",
     status: "Online",
     environment: process.env.NODE_ENV || "development",
   });
