@@ -1,9 +1,20 @@
-# Auxiliar para evitar conflitos de nomes
+# --- Busca Automática pela AMI mais recente do Amazon Linux 2023 ---
+data "aws_ami" "latest_amazon_linux" {
+  most_recent = true
+  owners      = ["amazon"]
+
+  filter {
+    name   = "name"
+    values = ["al2023-ami-20*-x86_64"]
+  }
+}
+
+# Auxiliar para evitar conflitos de nomes se o state for perdido
 resource "random_id" "role_suffix" {
   byte_length = 2
 }
 
-# --- Security Group para a EC2 (Usa o provedor padrão: São Paulo) ---
+# --- Security Group para a EC2 (Usa o provedor padrão de São Paulo) ---
 resource "aws_security_group" "ec2_sg" {
   name        = "lacrei-app-sg-${random_id.role_suffix.hex}"
   description = "Permitir transito para a app Lacrei"
@@ -31,7 +42,7 @@ resource "aws_security_group" "ec2_sg" {
   }
 }
 
-# --- IAM Role ---
+# --- IAM Role para a EC2 acessar o ECR ---
 resource "aws_iam_role" "ec2_ecr_role" {
   name = "lacrei-ec2-role-${random_id.role_suffix.hex}"
 
@@ -57,12 +68,12 @@ resource "aws_iam_instance_profile" "ec2_profile" {
 
 # --- Instancia EC2 (São Paulo) ---
 resource "aws_instance" "app_server" {
-  ami           = "ami-03c0041ef655f4420" # Amazon Linux 2023 em sa-east-1
+  ami           = data.aws_ami.latest_amazon_linux.id
   instance_type = "t3.micro"
   
   subnet_id                   = aws_subnet.public.id
   vpc_security_group_ids      = [aws_security_group.ec2_sg.id]
-  iam_instance_profile        = aws_iam_instance_profile.ec2_profile.id
+  iam_instance_profile        = aws_instance_profile.ec2_profile.id
   associate_public_ip_address = true
 
   user_data = <<-EOF
