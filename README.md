@@ -38,10 +38,11 @@ A pipeline está configurada no arquivo `.github/workflows/main.yml` e segue os 
 
 ## 📈 Como acessar a aplicação
 
-Após o deploy, o Terraform gerará um link no formato de DNS do ALB (Load Balancer).
+Após o deploy, o Terraform gerará um link no formato de DNS do ALB (Load Balancer) e o link do recurso de monitoramento (Grafana).
 
 *   **Load Balancer (HTTPS)**: Será gerada uma URL segura via Load Balancer. Como utilizamos um certificado **Self-Signed** (autoassinado) para este desafio (limitante do ambiente sem domínio registrado), o navegador exibirá um alerta de segurança. Para acessar, clique em "Avançado" e "Prosseguir para o site".
-*   *(Opcional: IP Direto de Arquiteturas Anteriores ou Falha no ALB: [http://54.207.253.176/](http://54.207.253.176/))*
+*   **Grafana (HTTPS)**: Será gerada uma URL segura via Load Balancer.
+
 
 ## 🔄 Estratégia de Rollback
 
