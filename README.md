@@ -7,7 +7,7 @@ Este repositório contém a solução completa para o desafio técnico de DevOps
 Para este desafio, optei por uma abordagem **Híbrida e Multirregional** para garantir performance e conformidade com os serviços disponíveis na AWS:
 
 *   **Ambiente de Produção (São Paulo - sa-east-1)**: Implantado em **Amazon EC2** para garantir a menor latência possível para usuários no Brasil.
-*   **Ambiente de Staging (Virgínia - us-east-1)**: Configurado utilizando **AWS App Runner** (Cloud Native). Como este serviço ainda não está disponível na região de São Paulo, a arquitetura foi desenhada para operar de forma multirregional, demonstrando versatilidade na gestão de recursos globais.
+*   **Ambiente de Staging (Virgínia - us-east-1)**: Configurado utilizando **AWS App Runner** (Cloud Native). Como este serviço ainda não está disponível na região de São Paulo, a arquitetura foi desenhada para operar de forma multirregional, demonstrando versatilidade na gestão de recursos globais. (Como eu uso o free tier para subir subir a infraestrutura, o plano free tier da AWS não dá acesso ao serviço App Runner, porém mesmo assim o código foi criado com a expectativa de que esse serviço esteja funcionando com um detalhe, no main.tf o recurso: [variable "app_runner_count" { default = 0 }] faz com que o serviço não funcione pulando assim essa etapa para o deploy ser aceito.)
 
 ## 🛠️ Tecnologias Utilizadas
 
