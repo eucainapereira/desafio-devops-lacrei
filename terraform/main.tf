@@ -1,4 +1,4 @@
-# Provider padrão: São Paulo (Brasil) - Onde fica nossa Produção
+# Provider padrão: São Paulo (Brasil)
 provider "aws" {
   region = "sa-east-1"
 }
@@ -9,66 +9,81 @@ provider "aws" {
   region = "us-east-1"
 }
 
-# --- VPC & Networking (São Paulo) ---
+# --- VPC & Networking ---
 resource "aws_vpc" "main" {
   cidr_block           = "10.0.0.0/16"
   enable_dns_hostnames = true
   tags = { Name = "lacrei-saude-vpc" }
 }
 
-# Criar o Internet Gateway (Portão da Internet)
 resource "aws_internet_gateway" "igw" {
   vpc_id = aws_vpc.main.id
   tags   = { Name = "lacrei-igw" }
 }
 
-resource "aws_subnet" "public" {
+# Subnet A (São Paulo 1a)
+resource "aws_subnet" "public_a" {
   vpc_id                  = aws_vpc.main.id
   cidr_block              = "10.0.1.0/24"
+  availability_zone       = "sa-east-1a"
   map_public_ip_on_launch = true
-  tags                    = { Name = "lacrei-public-subnet" }
+  tags                    = { Name = "lacrei-public-a" }
 }
 
-# Criar a Tabela de Rotas para apontar para o Internet Gateway
+# Subnet B (São Paulo 1c) - O ALB exige duas zonas!
+resource "aws_subnet" "public_b" {
+  vpc_id                  = aws_vpc.main.id
+  cidr_block              = "10.0.2.0/24"
+  availability_zone       = "sa-east-1c"
+  map_public_ip_on_launch = true
+  tags                    = { Name = "lacrei-public-b" }
+}
+
 resource "aws_route_table" "public_rt" {
   vpc_id = aws_vpc.main.id
-
   route {
     cidr_block = "0.0.0.0/0"
     gateway_id = aws_internet_gateway.igw.id
   }
-
-  tags = { Name = "lacrei-public-rt" }
 }
 
-# Associar a Subnet com a Tabela de Rotas
-resource "aws_route_table_association" "public_assoc" {
-  subnet_id      = aws_subnet.public.id
+resource "aws_route_table_association" "a" {
+  subnet_id      = aws_subnet.public_a.id
   route_table_id = aws_route_table.public_rt.id
 }
 
-/* 
-# --- AWS App Runner (CONFIGURAÇÃO PARA STAGING) ---
-resource "aws_apprunner_service" "app" {
-  provider     = aws.virginia
-  count        = var.app_runner_count 
-  service_name = "app-lacrei-saude"
-
-  source_configuration {
-    image_repository {
-      image_identifier      = "873011686071.dkr.ecr.sa-east-1.amazonaws.com/app-lacrei-saude:latest"
-      image_repository_type = "ECR"
-      image_configuration {
-        port = "3000"
-        runtime_environment_variables = {
-          NODE_ENV = "production"
-        }
-      }
-    }
-    auto_deployments_enabled = true
-  }
+resource "aws_route_table_association" "b" {
+  subnet_id      = aws_subnet.public_b.id
+  route_table_id = aws_route_table.public_rt.id
 }
-*/
+
+# --- CERTIFICADO TLS (AUTOASSINADO PARA O DESAFIO) ---
+resource "tls_private_key" "example" {
+  algorithm = "RSA"
+}
+
+resource "tls_self_signed_cert" "example" {
+  private_key_pem = tls_private_key.example.private_key_pem
+
+  subject {
+    common_name  = "lacrei-saude.local"
+    organization = "Lacrei Saude Challenge"
+  }
+
+  validity_period_hours = 8760 # 1 ano
+
+  allowed_uses = [
+    "key_encipherment",
+    "digital_signature",
+    "server_auth",
+  ]
+}
+
+resource "aws_iam_server_certificate" "lb_cert" {
+  name             = "lacrei-self-signed-cert"
+  certificate_body = tls_self_signed_cert.example.cert_pem
+  private_key      = tls_private_key.example.private_key_pem
+}
 
 # --- Variables ---
 variable "aws_region" { default = "sa-east-1" }
