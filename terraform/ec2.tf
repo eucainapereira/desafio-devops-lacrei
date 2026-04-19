@@ -45,7 +45,7 @@ resource "aws_security_group" "lb_sg" {
 # --- SG 2: EC2 (Aceita APENAS do Load Balancer) ---
 resource "aws_security_group" "ec2_sg" {
   name        = "lacrei-app-sg-${random_id.role_suffix.hex}"
-  description = "Permitir trânsito vindo apenas do Load Balancer"
+  description = "Permitir transito vindo apenas do Load Balancer"
   vpc_id      = aws_vpc.main.id
 
   ingress {
