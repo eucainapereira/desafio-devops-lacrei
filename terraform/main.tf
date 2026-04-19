@@ -80,7 +80,7 @@ resource "tls_self_signed_cert" "example" {
 }
 
 resource "aws_iam_server_certificate" "lb_cert" {
-  name             = "lacrei-self-signed-cert"
+  name_prefix      = "lacrei-cert-"
   certificate_body = tls_self_signed_cert.example.cert_pem
   private_key      = tls_private_key.example.private_key_pem
 }
