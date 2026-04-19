@@ -14,10 +14,10 @@ resource "random_id" "role_suffix" {
   byte_length = 2
 }
 
-# --- SG 1: Load Balancer (Aberto para o Mundo na Porta 80 e 443) ---
+# --- SG 1: Load Balancer (Aberto na Porta 80, 443 e 3001 para Grafana) ---
 resource "aws_security_group" "lb_sg" {
   name        = "lacrei-lb-sg-${random_id.role_suffix.hex}"
-  description = "Acesso HTTP/HTTPS para o Load Balancer"
+  description = "Acesso HTTP/HTTPS e Grafana para o Load Balancer"
   vpc_id      = aws_vpc.main.id
 
   ingress {
@@ -30,6 +30,14 @@ resource "aws_security_group" "lb_sg" {
   ingress {
     from_port   = 443
     to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  # Porta exclusiva do Grafana no LB
+  ingress {
+    from_port   = 3001 
+    to_port     = 3001
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
@@ -52,7 +60,14 @@ resource "aws_security_group" "ec2_sg" {
     from_port       = 3000
     to_port         = 3000
     protocol        = "tcp"
-    security_groups = [aws_security_group.lb_sg.id] # << SEGURANÇA: Só aceita do LB
+    security_groups = [aws_security_group.lb_sg.id]
+  }
+
+  ingress {
+    from_port       = 3001
+    to_port         = 3001
+    protocol        = "tcp"
+    security_groups = [aws_security_group.lb_sg.id]
   }
 
   egress {
@@ -74,6 +89,7 @@ resource "aws_lb" "app_lb" {
   enable_deletion_protection = false
 }
 
+# Target Group da App (Porta 3000)
 resource "aws_lb_target_group" "tg" {
   name_prefix = "lactg-"
   port        = 3000
@@ -89,7 +105,23 @@ resource "aws_lb_target_group" "tg" {
   }
 }
 
-# Ouvinte 80 (Redireciona para 443)
+# Target Group do Grafana (Porta 3001)
+resource "aws_lb_target_group" "grafana_tg" {
+  name_prefix = "graf-"
+  port        = 3001
+  protocol    = "HTTP"
+  vpc_id      = aws_vpc.main.id
+
+  health_check {
+    path                = "/api/health"
+    interval            = 60
+    timeout             = 10
+    healthy_threshold   = 2
+    unhealthy_threshold = 2
+  }
+}
+
+# Ouvinte 80 (Redireciona para 443 App Oficial)
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.app_lb.arn
   port              = "80"
@@ -105,7 +137,7 @@ resource "aws_lb_listener" "http" {
   }
 }
 
-# Ouvinte 443 (HTTPS com Certificado)
+# Ouvinte 443 (HTTPS App Lacrei)
 resource "aws_lb_listener" "https" {
   load_balancer_arn = aws_lb.app_lb.arn
   port              = "443"
@@ -119,7 +151,19 @@ resource "aws_lb_listener" "https" {
   }
 }
 
-# --- IAM Role para a EC2 acessar o ECR ---
+# Ouvinte 3001 (Grafana - HTTP para visualização do avaliador direto no painel)
+resource "aws_lb_listener" "grafana" {
+  load_balancer_arn = aws_lb.app_lb.arn
+  port              = "3001"
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.grafana_tg.arn
+  }
+}
+
+# --- IAM Role para a EC2 ---
 resource "aws_iam_role" "ec2_ecr_role" {
   name = "lacrei-ec2-role-${random_id.role_suffix.hex}"
 
@@ -136,11 +180,6 @@ resource "aws_iam_role" "ec2_ecr_role" {
 resource "aws_iam_role_policy_attachment" "ec2_ecr_attach" {
   role       = aws_iam_role.ec2_ecr_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
-}
-
-resource "aws_iam_role_policy_attachment" "ec2_cloudwatch_attach" {
-  role       = aws_iam_role.ec2_ecr_role.name
-  policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
 }
 
 resource "aws_iam_instance_profile" "ec2_profile" {
@@ -161,30 +200,37 @@ resource "aws_instance" "app_server" {
   user_data = <<-EOF
               #!/bin/bash
               yum update -y
-              yum install -y docker amazon-cloudwatch-agent
+              yum install -y docker
               systemctl start docker
               systemctl enable docker
               usermod -a -G docker ec2-user
               
-              # Configurar e Iniciar CloudWatch Agent
-              /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -s
-              
-              sleep 10
+              # TENTATIVA DO DOCKER LOGIN (Pode falhar em casos de tempo excessivo da policy, mas rodará public images livremente)
               aws ecr get-login-password --region sa-east-1 | docker login --username AWS --password-stdin 873011686071.dkr.ecr.sa-east-1.amazonaws.com
               
+              # Subir Aplicação Lacrei (Sua API original na 3000)
               docker pull 873011686071.dkr.ecr.sa-east-1.amazonaws.com/app-lacrei-saude:latest
-              
-              # MAPEAR PARA 3000:3000 para o Target Group bater direto
               docker run -d -p 3000:3000 --name app-lacrei --restart always 873011686071.dkr.ecr.sa-east-1.amazonaws.com/app-lacrei-saude:latest
+
+              # Subir GRAFANA (Porta 3001) para Desafio Monitoramento Bônus
+              docker pull grafana/grafana-enterprise:latest
+              docker run -d -p 3001:3000 --name grafana-monitor --restart always grafana/grafana-enterprise:latest
               EOF
 
   tags = { Name = "lacrei-saude-server" }
 }
 
+# Links dos Targets Groups
 resource "aws_lb_target_group_attachment" "test" {
   target_group_arn = aws_lb_target_group.tg.arn
   target_id        = aws_instance.app_server.id
   port             = 3000
+}
+
+resource "aws_lb_target_group_attachment" "grafana" {
+  target_group_arn = aws_lb_target_group.grafana_tg.arn
+  target_id        = aws_instance.app_server.id
+  port             = 3001
 }
 
 # --- SNS Topic para Alertas (Bônus) ---
@@ -195,5 +241,10 @@ resource "aws_sns_topic" "alerts" {
 # --- Outputs atualizados ---
 output "load_balancer_dns" {
   value = "https://${aws_lb.app_lb.dns_name}"
-  description = "Acesse a aplicação através deste link seguro (Pode dar erro SSL por ser autoassinado)"
+  description = "Acesse a aplicação principal (Retorna JSON com Message Bem Vindo)"
+}
+
+output "grafana_dashboard_url" {
+  value       = "http://${aws_lb.app_lb.dns_name}:3001"
+  description = "Acesse o painel do Grafana (Monitoramento de Infraestrutura Bônus)"
 }
