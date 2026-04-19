@@ -138,6 +138,11 @@ resource "aws_iam_role_policy_attachment" "ec2_ecr_attach" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
 }
 
+resource "aws_iam_role_policy_attachment" "ec2_cloudwatch_attach" {
+  role       = aws_iam_role.ec2_ecr_role.name
+  policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
+}
+
 resource "aws_iam_instance_profile" "ec2_profile" {
   name = "lacrei-ec2-profile-${random_id.role_suffix.hex}"
   role = aws_iam_role.ec2_ecr_role.name
@@ -156,10 +161,13 @@ resource "aws_instance" "app_server" {
   user_data = <<-EOF
               #!/bin/bash
               yum update -y
-              yum install -y docker
+              yum install -y docker amazon-cloudwatch-agent
               systemctl start docker
               systemctl enable docker
               usermod -a -G docker ec2-user
+              
+              # Configurar e Iniciar CloudWatch Agent
+              /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -s
               
               sleep 10
               aws ecr get-login-password --region sa-east-1 | docker login --username AWS --password-stdin 873011686071.dkr.ecr.sa-east-1.amazonaws.com
