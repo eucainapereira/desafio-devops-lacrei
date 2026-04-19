@@ -36,8 +36,8 @@ A pipeline está configurada no arquivo `.github/workflows/main.yml` e segue os 
 
 A aplicação de produção pode ser acessada através do IP Público gerado pelo Terraform na região de São Paulo:
 
-*   **IP de Produção**: [Link para o IP atualizado]
+*   **IP de Produção**: [[Link para o IP atualizado]](http://54.207.253.176/)
 *   **Porta**: 80 (HTTP)
 
 ---
-*Projeto desenvolvido por [Seu Nome] como requisito para o Desafio Técnico de DevOps da Lacrei Saúde.*
+*Projeto desenvolvido por Cainã Pereira como requisito para o Desafio Técnico de DevOps da Lacrei Saúde.*
