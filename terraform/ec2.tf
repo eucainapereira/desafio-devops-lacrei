@@ -76,7 +76,7 @@ resource "aws_security_group" "lb_sg" {
 # SG 2: EC2 (Aceita APENAS do Load Balancer — sem exposição direta à internet)
 resource "aws_security_group" "ec2_sg" {
   name        = "lacrei-app-sg-${random_id.role_suffix.hex}"
-  description = "Permitir tráfego vindo apenas do Load Balancer"
+  description = "Allow traffic only from the Load Balancer"
   vpc_id      = aws_vpc.main.id
 
   ingress {
@@ -407,7 +407,7 @@ resource "aws_cloudwatch_metric_alarm" "high_cpu" {
   period              = 300
   statistic           = "Average"
   threshold           = 80
-  alarm_description   = "Alerta: CPU da EC2 acima de 80% por 10 minutos consecutivos"
+  alarm_description   = "Alert: EC2 CPU above 80% for 10 consecutive minutes"
   alarm_actions       = [aws_sns_topic.alerts.arn]
   ok_actions          = [aws_sns_topic.alerts.arn]
 
@@ -428,7 +428,7 @@ resource "aws_cloudwatch_metric_alarm" "unhealthy_hosts" {
   period              = 60
   statistic           = "Maximum"
   threshold           = 0
-  alarm_description   = "Alerta: Instâncias não saudáveis detectadas no Target Group do ALB"
+  alarm_description   = "Alert: Unhealthy instances detected in ALB Target Group"
   alarm_actions       = [aws_sns_topic.alerts.arn]
   ok_actions          = [aws_sns_topic.alerts.arn]
 
@@ -451,7 +451,7 @@ resource "aws_cloudwatch_metric_alarm" "http_5xx" {
   statistic           = "Sum"
   threshold           = 10
   treat_missing_data  = "notBreaching"
-  alarm_description   = "Alerta: Mais de 10 erros HTTP 5xx em 10 minutos"
+  alarm_description   = "Alert: More than 10 HTTP 5xx errors in 10 minutes"
   alarm_actions       = [aws_sns_topic.alerts.arn]
 
   dimensions = {

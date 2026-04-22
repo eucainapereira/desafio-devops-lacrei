@@ -284,9 +284,68 @@ jobs:
           echo "❌ terraform init falhou após 3 tentativas."
           exit 1
 
+      - name: Terraform Import — Reconciliar recursos existentes na AWS
+        working-directory: ./terraform
+        run: |
+          # Importa recursos que já existem na AWS mas não estão no Terraform state.
+          # Idempotente: o || true garante que o passo só falha se o import "pegar" um recurso errado.
+          # Na primeira execução após state vazio, isso evita o erro "resource already exists".
+
+          echo "🔍 Verificando recursos existentes para importar..."
+
+          # ── ALB ──
+          ALB_ARN=$(aws elbv2 describe-load-balancers \
+            --names lacrei-saude-alb \
+            --query "LoadBalancers[0].LoadBalancerArn" \
+            --output text --region sa-east-1 2>/dev/null || echo "")
+          if [ -n "$ALB_ARN" ] && [ "$ALB_ARN" != "None" ] && [ "$ALB_ARN" != "null" ]; then
+            echo "📥 Importando ALB: $ALB_ARN"
+            terraform import -var="ecr_repository_url=873011686071.dkr.ecr.sa-east-1.amazonaws.com/app-lacrei-saude" \
+              -var="alert_email=${{ secrets.ALERT_EMAIL }}" \
+              aws_lb.app_lb "$ALB_ARN" || true
+          fi
+
+          # ── CloudWatch Log Group ──
+          CW_EXISTS=$(aws logs describe-log-groups \
+            --log-group-name-prefix "/lacrei/app/docker" \
+            --query "logGroups[0].logGroupName" \
+            --output text --region sa-east-1 2>/dev/null || echo "")
+          if [ -n "$CW_EXISTS" ] && [ "$CW_EXISTS" != "None" ] && [ "$CW_EXISTS" != "null" ]; then
+            echo "📥 Importando Log Group: $CW_EXISTS"
+            terraform import -var="ecr_repository_url=873011686071.dkr.ecr.sa-east-1.amazonaws.com/app-lacrei-saude" \
+              -var="alert_email=${{ secrets.ALERT_EMAIL }}" \
+              aws_cloudwatch_log_group.app_logs "$CW_EXISTS" || true
+          fi
+
+          # ── SNS Topic ──
+          SNS_ARN=$(aws sns list-topics \
+            --query "Topics[?contains(TopicArn,'lacrei-saude-alerts')].TopicArn | [0]" \
+            --output text --region sa-east-1 2>/dev/null || echo "")
+          if [ -n "$SNS_ARN" ] && [ "$SNS_ARN" != "None" ] && [ "$SNS_ARN" != "null" ]; then
+            echo "📥 Importando SNS Topic: $SNS_ARN"
+            terraform import -var="ecr_repository_url=873011686071.dkr.ecr.sa-east-1.amazonaws.com/app-lacrei-saude" \
+              -var="alert_email=${{ secrets.ALERT_EMAIL }}" \
+              aws_sns_topic.alerts "$SNS_ARN" || true
+          fi
+
+          # ── SSM Parameter ──
+          SSM_EXISTS=$(aws ssm describe-parameters \
+            --filters "Key=Name,Values=/lacrei/last-successful-image-tag" \
+            --query "Parameters[0].Name" \
+            --output text --region sa-east-1 2>/dev/null || echo "")
+          if [ -n "$SSM_EXISTS" ] && [ "$SSM_EXISTS" != "None" ] && [ "$SSM_EXISTS" != "null" ]; then
+            echo "📥 Importando SSM Parameter: $SSM_EXISTS"
+            terraform import -var="ecr_repository_url=873011686071.dkr.ecr.sa-east-1.amazonaws.com/app-lacrei-saude" \
+              -var="alert_email=${{ secrets.ALERT_EMAIL }}" \
+              aws_ssm_parameter.last_deployed_image_tag "$SSM_EXISTS" || true
+          fi
+
+          echo "✅ Reconciliação de state concluída."
+
       - name: Terraform Apply (usando plano aprovado)
         working-directory: ./terraform
         run: terraform apply -auto-approve tfplan
+
 
       # ── Gravar SHA da imagem deployada com sucesso no SSM ──
       - name: Registrar imagem deployada no SSM (base do rollback)
