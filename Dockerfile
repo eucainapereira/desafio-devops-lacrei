@@ -20,6 +20,10 @@ FROM node:18-alpine
 # Define o diretrio de trabalho
 WORKDIR /app
 
+# Atualiza pacotes do sistema para corrigir vulnerabilidades conhecidas
+# CVE-2025-15467: libcrypto3/libssl3 (OpenSSL) → corrigido na 3.3.6-r0
+RUN apk upgrade --no-cache
+
 # Copia as dependncias do estgio de build
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
