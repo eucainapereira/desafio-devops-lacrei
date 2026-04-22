@@ -1,131 +1,327 @@
-# Desafio Técnico DevOps - Lacrei Saúde 🚀
+# Desafio Técnico DevOps — Lacrei Saúde 🚀
 
-Este repositório contém a solução completa para o desafio técnico de DevOps da Lacrei Saúde. O projeto consiste em uma esteira de CI/CD automatizada para uma aplicação Node.js, utilizando infraestrutura moderna na AWS gerenciada via Terraform.
+Este repositório contém a solução completa para o desafio técnico de DevOps da Lacrei Saúde: uma esteira de CI/CD automatizada para uma aplicação Node.js, com infraestrutura na AWS gerenciada integralmente via Terraform.
 
-## 🏗️ Arquitetura do Projeto
-Para este desafio, optei por uma abordagem **Híbrida e Multirregional** para garantir performance e conformidade com os serviços disponíveis na AWS:
+---
 
-*   **Ambiente de Produção (São Paulo - sa-east-1)**: Implantado em **Amazon EC2** para garantir a menor latência possível para usuários no Brasil. A infraestrutura conta com:
-    * **Application Load Balancer (ALB)**: Gerencia o tráfego de entrada, distribuindo-o entre subnets em diferentes zonas de disponibilidade (sa-east-1a e sa-east-1c).
-    * **HTTPS/TLS Obrigatório**: Todo o tráfego na porta 80 é redirecionado automaticamente para a porta 443 (HTTPS). A criptografia é garantida por um certificado TLS gerenciado pelo AWS IAM.
-    * **Isolamento de Segurança**: A instância EC2 opera em um Security Group restrito, aceitando conexões **apenas** vindas do Load Balancer na porta da aplicação (3000).
-*   **Ambiente de Staging (Virgínia - us-east-1)**: Configurado utilizando **AWS App Runner** (Cloud Native). Como este serviço ainda não está disponível na região de São Paulo, a arquitetura foi desenhada para operar de forma multirregional, demonstrando versatilidade na gestão de recursos globais.
+## 🏗️ Arquitetura
 
-    > ⚠️ **Nota Estratégica sobre o App Runner (Free Tier)**: Como eu uso o free tier para subir a infraestrutura, o plano free tier da AWS não dá acesso ao serviço App Runner. Porém, mesmo assim o código foi criado com a expectativa de que esse serviço esteja funcionando, com um detalhe crucial: no `main.tf` o recurso `variable "app_runner_count" { default = 0 }` faz com que o serviço não seja criado, pulando assim essa etapa para o deploy ser aceito sem causar erros de SubscriptionRequiredException, comprovando o domínio da estrutura do código.
+```
+                          ╔══════════════════╗
+                          ║   Desenvolvedor  ║
+                          ╚════════╦═════════╝
+                                   │ git push
+                          ╔════════▼═════════╗
+                          ║  GitHub Actions  ║
+                          ║ ┌──────────────┐ ║
+                          ║ │ 1. Lint      │ ║
+                          ║ │ 2. Testes    │ ║
+                          ║ │ 3. Build     │ ║
+                          ║ │ 4. Trivy Scan│ ║
+                          ║ │ 5. Push ECR  │ ║
+                          ║ │ 6. TF Plan   │ ║
+                          ║ │ 7. TF Apply  │ ║
+                          ║ │ 8. Smoke Test│ ║
+                          ║ └──────────────┘ ║
+                          ╚══════╦═══════════╝
+                                 │
+               ┌─────────────────┼──────────────────┐
+               ▼                 ▼                   ▼
+         ┌─────────┐      ┌──────────┐       ┌───────────┐
+         │   ECR   │      │S3 TFState│       │  DynamoDB │
+         │(imagens)│      │(tfstate) │       │(state lock│
+         └─────────┘      └──────────┘       └───────────┘
+               │
+               ▼
+    ╔══════════════════════╗
+    ║     AWS — sa-east-1  ║
+    ║  ┌────────────────┐  ║
+    ║  │ Internet (80)  │  ║  ← Redireciona para HTTPS
+    ║  │ Internet (443) │  ║  ← HTTPS/TLS (App)
+    ║  │ Internet (3001)│  ║  ← HTTPS/TLS (Grafana)
+    ║  └───────┬────────┘  ║
+    ║          │           ║
+    ║  ┌───────▼────────┐  ║
+    ║  │      ALB       │  ║  ← Application Load Balancer
+    ║  │ (sa-east-1a/c) │  ║     deletion_protection=true
+    ║  └───────┬────────┘  ║
+    ║          │           ║
+    ║  ┌───────▼────────┐  ║
+    ║  │  EC2 t3.micro  │  ║  ← Aceita APENAS do ALB (SG restrito)
+    ║  │  :3000 (App)   │  ║
+    ║  │  :3001 (Grafana│  ║
+    ║  └───────┬────────┘  ║
+    ║          │           ║
+    ║  ┌───────▼────────┐  ║
+    ║  │  CloudWatch    │  ║  ← Logs + Métricas + Alarmes → SNS → E-mail
+    ║  └────────────────┘  ║
+    ║                      ║
+    ║  ┌────────────────┐  ║
+    ║  │  SSM Parameter │  ║  ← Guarda tag da última imagem estável (rollback)
+    ║  └────────────────┘  ║
+    ╚══════════════════════╝
+```
 
-## 🛠️ Tecnologias Utilizadas
+---
 
-*   **Docker**: Conteinerização da aplicação Node.js.
-*   **Terraform**: Infraestrutura como Código (IaC) para provisionamento de VPC, Subnets, Security Groups, ALB e instâncias.
-*   **AWS ECR**: Registro privado de imagens Docker em São Paulo.
-*   **GitHub Actions**: Automação completa do ciclo de vida (Lint -> Test -> Build -> Push -> Deploy).
-*   **IAM (Least Privilege)**: Políticas de acesso restritas para garantir a segurança da conta.
+## 🛠️ Tecnologias
 
-## 🚀 Esteira CI/CD
+| Camada | Tecnologia | Função |
+|---|---|---|
+| **Aplicação** | Node.js + Express | API com logs JSON estruturados |
+| **Segurança App** | Helmet + CORS | Proteção de headers HTTP |
+| **Contêiner** | Docker | Empacotamento e execução isolada |
+| **Registry** | Amazon ECR | Armazenamento privado de imagens |
+| **IaC** | Terraform >= 1.3 | Provisionamento declarativo da infra |
+| **State Backend** | S3 + DynamoDB | State remoto, versionado e com lock |
+| **CI/CD** | GitHub Actions | Pipeline automático de 7 jobs |
+| **Segurança Imagem** | Trivy | Scan de vulnerabilidades CRITICAL |
+| **Compute** | EC2 t3.micro | Servidor de aplicação em São Paulo |
+| **Balanceamento** | ALB | Distribuição de tráfego + TLS termination |
+| **Criptografia** | TLS self-signed (IAM) | HTTPS obrigatório (demo sem domínio) |
+| **Logs** | CloudWatch Logs | Coleta de logs estruturados dos containers |
+| **Métricas** | CloudWatch + CW Agent | CPU, memória, disco, HTTP 5xx |
+| **Alertas** | CloudWatch Alarms + SNS | Notificação por e-mail em incidentes |
+| **Monitoramento** | Grafana Enterprise | Dashboard visual de métricas |
+| **Rollback** | SSM Parameter Store | Guarda tag da última imagem estável |
+| **Acesso Remoto** | SSM Session Manager | Acesso à EC2 sem SSH exposto |
 
-A pipeline está configurada no arquivo `.github/workflows/main.yml` e segue os seguintes passos:
+---
 
-1.  **Lint & Test**: Validação de código e execução de testes unitários.
-2.  **Build & Push**: Geração da imagem Docker e envio para o Amazon ECR (sa-east-1) com tags de SHA e `latest`.
-3.  **Deploy Staging**: Disparado automaticamente em pushes para a branch `staging`.
-4.  **Deploy Production**: Disparado em pushes para `main` ou `master`, utilizando o Terraform para atualizar a infraestrutura e o runtime da aplicação.
+## 🚀 Pipeline CI/CD
 
-## 🔒 Segurança e Melhores Práticas
+O pipeline está em `.github/workflows/main.yml` e possui **7 jobs encadeados**:
 
-*   **Security Groups**: Acesso rigidamente controlado, com tráfego público permitido apenas no ALB (Load Balancer). O tráfego direto para a porta principal da aplicação é bloqueado na Internet.
-*   **User Data Resiliente**: O script de inicialização da EC2 conta com lógica de retry, login automático no ECR e reinicialização automática do container em caso de falha.
-*   **GitHub Secrets**: Nenhuma credencial sensível está exposta no código.
+```
+[lint] ──► [test] ──► [build+scan+push] ──► [terraform-plan] ──► [deploy-prod] ──► [rollback*]
+                               │
+                               └──► [deploy-staging] (branch: staging)
 
-## 📈 Como acessar a aplicação
+* rollback só ativa em caso de falha no deploy-prod
+```
 
-Após o deploy, o Terraform gerará um link no formato de DNS do ALB (Load Balancer) e o link do recurso de monitoramento (Grafana).
+### Detalhamento dos Jobs
 
-*   **Load Balancer (HTTPS)**: Será gerada uma URL segura via Load Balancer. Como utilizamos um certificado **Self-Signed** (autoassinado) para este desafio (limitante do ambiente sem domínio registrado), o navegador exibirá um alerta de segurança. Para acessar, clique em "Avançado" e "Prosseguir para o site".
-*   **Grafana (HTTPS)**: Será gerada uma URL segura via Load Balancer.
+| # | Job | O que faz | Gate de qualidade |
+|---|---|---|---|
+| 1 | **lint** | Roda `npm run lint` (ESLint) | Bloqueia se houver erros de código |
+| 2 | **test** | Roda `npm test` (Jest) | Bloqueia se testes falharem |
+| 3 | **build+scan+push** | Build Docker → Trivy Scan → Push ECR | Bloqueia em vulnerabilidades CRITICAL |
+| 4 | **terraform-plan** | Gera `terraform plan` e salva como artefato | Gate visual antes do apply |
+| 5 | **deploy-production** | `terraform apply` → SSM update → Smoke Test | Smoke test valida HTTP 200 no ALB |
+| 6 | **deploy-staging** | App Runner (Virgínia) | Apenas na branch `staging` |
+| 7 | **rollback** | Busca imagem estável no SSM e faz re-apply | Acionado automaticamente em falha |
 
+### Secrets Necessários no GitHub
+
+| Secret | Descrição | Obrigatório |
+|---|---|---|
+| `AWS_ACCESS_KEY_ID` | Chave de acesso IAM do pipeline | ✅ Sim |
+| `AWS_SECRET_ACCESS_KEY` | Chave secreta IAM do pipeline | ✅ Sim |
+| `ALERT_EMAIL` | E-mail que receberá alertas do CloudWatch | ⚡ Recomendado |
+
+---
+
+## 🔒 Segurança
+
+### Defense in Depth (Defesa em Profundidade)
+
+```
+Internet
+   │
+   ▼  Camada 1: ALB Security Group (port 80/443/3001 only)
+   │
+   ▼  Camada 2: TLS/HTTPS obrigatório (redirect 80→443, SG bloqueia HTTP direto)
+   │
+   ▼  Camada 3: EC2 Security Group (aceita APENAS do ALB — sem exposição direta)
+   │
+   ▼  Camada 4: IAM Least Privilege (GitHub Actions e EC2 com permissões mínimas)
+   │
+   ▼  Camada 5: Trivy Scan (bloqueia imagens com CVEs CRITICAL)
+   │
+   ▼  Camada 6: Secrets via GitHub Secrets / variáveis de ambiente
+```
+
+### Checklist de Segurança
+
+- [x] **Least Privilege (IAM)**: Políticas restritas por serviço e por ARN
+- [x] **Isolamento de Rede**: EC2 sem exposição direta — tráfego apenas via ALB
+- [x] **HTTPS/TLS Obrigatório**: Listener 80 redireciona para 443 (HTTP_301)
+- [x] **Secrets sem exposição**: Credenciais injetadas via GitHub Secrets
+- [x] **Scan de Imagens**: Trivy bloqueia vulnerabilidades CRITICAL antes do push
+- [x] **ECR scan_on_push**: Escaneamento automático no registro
+- [x] **Acesso remoto seguro**: SSM Session Manager (sem porta SSH aberta)
+- [x] **State criptografado**: S3 com SSE-AES256 + versionamento habilitado
+- [x] **ALB Deletion Protection**: Proteção contra deleção acidental em produção
+
+---
+
+## 📊 Observabilidade
+
+### O que é coletado
+
+| Fonte | Destino | Como visualizar |
+|---|---|---|
+| Logs JSON da aplicação | CloudWatch Log Group `/lacrei/app/docker` | CloudWatch Logs Insights |
+| Logs do Docker (stdout) | CloudWatch Log Group via CW Agent | CloudWatch Logs Insights |
+| CPU, memória, disco da EC2 | CloudWatch Metrics (namespace `CWAgent`) | Grafana ou CloudWatch |
+| Métricas do ALB (latência, 5xx) | CloudWatch Metrics (namespace `AWS/ApplicationELB`) | CloudWatch |
+
+### Alarmes Configurados
+
+| Alarme | Condição | Ação |
+|---|---|---|
+| `lacrei-ec2-high-cpu` | CPU > 80% por 10 min consecutivos | SNS → E-mail |
+| `lacrei-alb-unhealthy-hosts` | Hosts não saudáveis > 0 no Target Group | SNS → E-mail |
+| `lacrei-alb-5xx-errors` | Mais de 10 erros HTTP 5xx em 10 min | SNS → E-mail |
+
+### Logs Estruturados da Aplicação
+
+Todo request gera um log JSON com a seguinte estrutura:
+```json
+{
+  "timestamp": "2025-01-15T14:30:00.000Z",
+  "level": "INFO",
+  "method": "GET",
+  "url": "/health",
+  "status": 200,
+  "responseTimeMs": 12,
+  "ip": "10.0.1.5",
+  "environment": "production"
+}
+```
+
+Consulta de exemplo no **CloudWatch Logs Insights**:
+```
+fields @timestamp, method, url, status, responseTimeMs
+| filter status >= 500
+| sort @timestamp desc
+| limit 50
+```
+
+---
 
 ## 🔄 Estratégia de Rollback
 
-Caso um deploy apresente falhas, você pode realizar o rollback de duas formas seguras:
+### Rollback Automático (via GitHub Actions)
 
-1.  **Via GitHub Actions (Recomendado)**:
-    *   Vá na aba "Actions" do repositório.
-    *   Selecione o último Job que foi bem-sucedido.
-    *   Clique em "Re-run all jobs". Isso fará o re-deploy da imagem anterior que já estava estável.
-2.  **Via Terraform (Manual)**:
-    *   No arquivo `ec2.tf`, você pode alterar a tag da imagem no `user_data` de `:latest` para a tag de um commit específico (ex: `:sha-abc1234`).
-    *   Execute `terraform apply` novamente.
+Em caso de falha no `deploy-production` (smoke test retorna status != 200), o job `rollback` é acionado automaticamente:
 
-## 🟨 Bônus: Integração Asaas (Arquitetura Proposta)
+1. Consulta o **SSM Parameter Store** `/lacrei/last-successful-image-tag`
+2. Obtém a tag SHA do último deploy bem-sucedido
+3. Executa `terraform apply` com a imagem estável
 
-Para integrar o sistema de pagamentos da Assas, a arquitetura recomendada utiliza **Webhooks**:
-1.  **Asaas** envia um evento de pagamento para um **AWS API Gateway**.
-2.  O Gateway dispara uma **AWS Lambda** (Serverless) para processar o pagamento sem onerar o servidor principal.
-3.  A Lambda atualiza o banco de dados da Lacrei Saúde.
+### Rollback Manual
 
-## 🔔 Alertas e Monitoramento (Bônus)
+**Via GitHub Actions (Recomendado)**:
+1. Vá na aba **Actions** do repositório
+2. Selecione o último workflow bem-sucedido
+3. Clique em **Re-run all jobs**
 
-Implementamos um tópico **AWS SNS** (Simple Notification Service) na infraestrutura para permitir a configuração futura de alertas de faturamento e status do servidor via E-mail ou Slack.
+**Via Terraform (Emergência)**:
+```bash
+# Verificar a última tag estável
+aws ssm get-parameter --name "/lacrei/last-successful-image-tag" --output text --query Parameter.Value
 
-Além disso, para comprovar a capacidade de monitoramento local em tempo real, uma stack do **Grafana** foi acoplada de forma 100% automatizada e como código (IaC):
-* O script de `user_data` do Terraform instancia um container Docker oficial do Grafana Enterprise.
-* Um Target Group e Listener atrelados ao Application Load Balancer foram provisionados para direcionar requisições da porta `3001` até a interface do Grafana.
-* Acesso imediato às validações via porta `3001` do DNS seguro do seu ALB.
-
-## 🛡️ Checklist de Segurança Aplicado
-
-Em cumprimento às regras e melhores princípios de DevOps/DevSecOps de alto nível em nuvem, este projeto atende integralmente a esse checklist estrutural:
-
-- [x] **Least Privilege (IAM)**: Uso de políticas JSON restritas a serviços exatos (ec2, ecr, sns, elb), garantindo que a credencial fornecida não possa apagar ou comprometer infraestruturas paralelas da conta.
-- [x] **Isolamento Interno de Redes (Security Groups)**: Instância sem exposição em pontas. O Target Group bloqueia acessos externos diretos na EC2, autorizando navegação nas portas dos containers apenas e se advindas do escudo do Load Balancer.
-- [x] **Criptografia em Trânsito (HTTPS/TLS)**: Configuração minuciosa para adoção do Load Balancer e Listener 443 certificado por TLS/IAM, exigido contratualmente para navegação selada, com redirecionamento ativo Anti-HTTP(80).
-- [x] **Vaults e Secrets Seguros**: Transição limpa de dados sigilosos; Chaves de autenticação injetadas sob-demanda do Painel Oculto de Repositórios do GitHub Actions e não commitadas fisicamente via texto-plano.
-- [x] **Containerização Rastrével e Segura**: Resiliência ativada ao `restart always`. Pull da imagem rastreada diretamente do Amazon ECR após ciclo completo formal de CI/CD (Lint > Testes de unidade). 
-
-## 🗃️ Registro de Decisões e Troubleshooting
-
-Durante o desenvolvimento do ambiente, priorizamos respostas técnicas em cenários reais de engenharia. Apresentamos abaixo os principais desafios e as respectivas soluções implementadas de forma a evidenciar as tomadas de decisão gerenciais do projeto:
-
-| Problema / Erro Observado no Deploy | Análise e Decisão Arquitetural |
-| :--- | :--- |
-| **Limitação AWS Free Tier (App Runner)**<br>O deploy falhava por `SubscriptionRequiredException` ao invocar um serviço Premium da nuvem inviável para o momento. | **Decisão**: Alteramos a variável atrelada ao provisionamento do Staging para `app_runner_count = 0`. O código em `main.tf` para App Runner foi preservado e está funcional metodicamente, mas desativado como demonstração de *Feature Toggle* inteligente para segurar custos. |
-| **Erros de State Drift (Terraform `EntityAlreadyExists`)**<br>Os testes geravam travamentos com "TargetGroup already exists" ou conflitos de certificados durante as múltiplas reconstruções. | **Decisão**: Abolimos regras de nomenclaturas rígidas nos recursos ("hardcoded strings"). Adotamos geradores dinâmicos como `name_prefix` no lugar de `name` e criamos instâncias aleatórias atreladas ao helper `random_id`, permitindo imutabilidade paralela contínua a cada novo `apply`. |
-| **Quedas por Permissões no GitHub Actions (`UnauthorizedOperation`)**<br>Bloqueio do pipeline ao criar roteamentos avançados (ALB) exigindo níveis maiores da política IAM. | **Decisão**: Aplicação estrita de *Least Privilege*. Sem o uso de "Admin Access", validamos linha a linha e mapeamos chaves exclusivas de `elasticloadbalancing:*`, `sns:*`, `iam:PassRole` acoplando as edições na policy anexada. |
-| **Limitação do CloudWatch Agent no Nível Gratuito**<br>A injeção do agente não sincronizava instâncias de logs corretamente ou exigia Roles avançados de log que pesavam a estrutura base. | **Decisão**: Decisões visuais ágeis *("Shift Left")*: Alteramos a premissa analítica incluindo localmente a dependência corporativa **Grafana Enterprise** via conteinerização nativa no próprio `user_data` - demonstrando automação de painéis paralelos operando sob tráfego próprio via porta 3001 nativa. |
-
-## 🛠️ Como Replicar este Ambiente do Zero
-
-Para reproduzir toda essa infraestrutura na sua própria conta AWS, siga os passos abaixo:
-
-### Pré-requisitos
-* Conta na AWS com permissões administrativas.
-* Terraform instalado localmente (caso deseje testar a infra manual).
-* Repositório no GitHub para configuração do CI/CD.
-
-### Passos
-1. **Clone o repositório**:
-   ```bash
-   git clone https://github.com/eucainapereira/desafio-devops-lacrei.git
-   cd desafio-devops-lacrei
-   ```
-
-2. **Crie o Repositório no Amazon ECR**:
-   A AWS exige que o repositório do ECR exista antes de fazermos o push pela Action. Crie-o na região `sa-east-1` (São Paulo) com o nome exato `app-lacrei-saude`.
-
-3. **Configure os Secrets no GitHub**:
-   No seu repositório GitHub, vá em *Settings* > *Secrets and variables* > *Actions* e adicione:
-   * `AWS_ACCESS_KEY_ID`: Sua chave de acesso AWS.
-   * `AWS_SECRET_ACCESS_KEY`: Sua chave secreta AWS.
-
-4. **Inicie a Pipeline CI/CD**:
-   * Faça uma alteração simples ou apenas force um push para a branch `main`.
-   * A GitHub Action fará o lint, testes, build da imagem Docker, push para o ECR e acionará o Terraform para criar a arquitetura segura (ALB + HTTPS + EC2 + SNS).
-
-5. **Destruir o ambiente (Limpeza)**:
-   Para não gerar custos desnecessários na AWS com recursos ativos ou em ociosidade, caso queira limpar tudo, acesse a pasta `terraform` localmente e rode:
-   ```bash
-   terraform destroy -auto-approve
-   ```
+# Aplicar manualmente com a tag desejada
+cd terraform
+terraform apply -var="ecr_repository_url=873011686071.dkr.ecr.sa-east-1.amazonaws.com/app-lacrei-saude" \
+                -var="image_tag=<sha-do-commit>"
+```
 
 ---
+
+## 📈 Resiliência e Alta Disponibilidade
+
+### Atual (v2 — Free Tier)
+
+- EC2 single instance com `--restart always` (auto-recuperação do container)
+- ALB com **health check** automático → remove instâncias não saudáveis do pool
+- **User data com retry** (5 tentativas de pull da imagem, backoff de 15s)
+- **Alarmes automáticos** notificam em falha
+- **Rollback automático** em falha de pipeline
+
+### Proposta Futura (Auto Scaling Group)
+
+O arquivo `terraform/autoscaling.tf` documenta a arquitetura de ASG completamente comentada, pronta para ativar quando o orçamento permitir:
+
+- **min=1, max=3** instâncias (scale automático por CPU > 70%)
+- Distribuição em **múltiplas AZs** (sa-east-1a + sa-east-1c)
+- **Self-healing**: substituição automática de instâncias com falha
+- **Rolling update**: substituição gradual sem downtime
+
+---
+
+## 🗃️ Decisões Arquiteturais
+
+| Problema / Cenário | Decisão e Justificativa |
+|:---|:---|
+| **App Runner não disponível no Free Tier**<br>Deploy falhava com `SubscriptionRequiredException` | `app_runner_count = 0` como feature toggle inteligente. O código permanece funcional e documentado para ativação futura sem refatoração |
+| **State corruption em múltiplos applies**<br>`EntityAlreadyExists` ao recriar recursos | S3 backend com DynamoDB lock: garante atomicidade e histórico de versões do state. `name_prefix` no lugar de `name` para evitar conflitos de nomenclatura |
+| **Chaves IAM de longa duração**<br>GitHub Actions com `Access Key ID` | Mantidas por limitação do Free Tier (OIDC exige permissões de admin para configurar o Identity Provider). Compensado com Trivy scan e escopo IAM mínimo |
+| **CloudWatch vs Prometheus standalone**<br>Escolha da pilha de observabilidade | CloudWatch reutiliza o Free Tier existente (10 alarmes gratuitos) e se integra nativamente com SNS e ALB. Grafana acoplado como container para dashboards visuais imediatos |
+| **ASG vs EC2 single instance**<br>Escalabilidade vs custo | EC2 single instance para o desafio (Free Tier). ASG documentado como proposta em `autoscaling.tf` — ativação não exige refatoração, apenas descomentar |
+| **Self-signed TLS vs ACM**<br>Certificado HTTPS | Self-signed via `tls_private_key` + `tls_self_signed_cert` (sem domínio registrado no desafio). Em produção real: ACM + Route53 para certificado gerenciado e renovação automática |
+
+---
+
+## 🔔 Bônus: Integração Asaas (Arquitetura Proposta)
+
+```
+[Asaas] ──► [API Gateway] ──► [Lambda] ──► [DB Lacrei Saúde]
+```
+
+1. **Asaas** envia evento de pagamento para um **AWS API Gateway**
+2. O Gateway dispara uma **Lambda** (serverless) para processar o evento
+3. A Lambda atualiza o banco de dados sem onerar o servidor principal
+
+---
+
+## 🛠️ Como Replicar do Zero
+
+### Pré-requisitos
+- Conta AWS com permissões IAM configuradas (ver política no repo)
+- Terraform >= 1.3 instalado localmente
+- AWS CLI configurado
+
+### Passo 1: Configurar Secrets no GitHub
+
+> **✅ O bucket S3 e a tabela DynamoDB são criados automaticamente pelo pipeline no primeiro push.**
+> O job `bootstrap-backend` verifica se os recursos existem e os cria caso necessário — 100% idempotente, sem nenhuma ação manual.
+
+Em **Settings → Secrets and variables → Actions**, adicione:
+
+| Secret | Valor |
+|---|---|
+| `AWS_ACCESS_KEY_ID` | Chave de acesso do IAM user do pipeline |
+| `AWS_SECRET_ACCESS_KEY` | Chave secreta do IAM user |
+| `ALERT_EMAIL` | E-mail para receber alertas do CloudWatch |
+
+### Passo 2: Ativar o Pipeline
+
+```bash
+git clone https://github.com/eucainapereira/desafio-devops-lacrei.git
+cd desafio-devops-lacrei
+git push origin main   # Dispara o pipeline completo
+```
+
+### Passo 3: Confirmar Subscription do SNS
+
+Após o primeiro `terraform apply`, o e-mail configurado receberá uma confirmação da AWS. **Clique no link de confirmação** para começar a receber alertas.
+
+### Passo 4: Destruir o Ambiente (Limpeza de Custos)
+
+```bash
+# Desabilitar o deletion_protection do ALB antes de destruir
+aws elbv2 modify-load-balancer-attributes \
+  --load-balancer-arn $(aws elbv2 describe-load-balancers --names lacrei-saude-alb --query "LoadBalancers[0].LoadBalancerArn" --output text) \
+  --attributes Key=deletion_protection.enabled,Value=false \
+  --region sa-east-1
+
+cd terraform
+terraform destroy -auto-approve
+```
+
+---
+
 *Projeto desenvolvido por Cainã Pereira como requisito para o Desafio Técnico de DevOps da Lacrei Saúde.*
