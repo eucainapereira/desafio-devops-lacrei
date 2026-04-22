@@ -25,12 +25,14 @@ Este repositório contém a solução completa para o desafio técnico de DevOps
                           ║ └──────────────┘ ║
                           ╚══════╦═══════════╝
                                  │
-               ┌─────────────────┼──────────────────┐
-               ▼                 ▼                   ▼
-         ┌─────────┐      ┌──────────┐       ┌───────────┐
-         │   ECR   │      │S3 TFState│       │  DynamoDB │
-         │(imagens)│      │(tfstate) │       │(state lock│
-         └─────────┘      └──────────┘       └───────────┘
+                ┌──────────────────────────────────┐
+                ▼                                  ▼
+          ┌─────────┐                       ┌──────────────────┐
+          │   ECR   │                       │   S3 TF State    │
+          │(imagens)│                       │(tfstate + locking│
+          └─────────┘                       │ nativo — sem     │
+                                            │ DynamoDB)        │
+                                            └──────────────────┘
                │
                ▼
     ╔══════════════════════╗
@@ -73,7 +75,7 @@ Este repositório contém a solução completa para o desafio técnico de DevOps
 | **Contêiner** | Docker | Empacotamento e execução isolada |
 | **Registry** | Amazon ECR | Armazenamento privado de imagens |
 | **IaC** | Terraform >= 1.3 | Provisionamento declarativo da infra |
-| **State Backend** | S3 + DynamoDB | State remoto, versionado e com lock |
+| **State Backend** | S3 (locking nativo) | State remoto, versionado, com lock nativo — sem DynamoDB |
 | **CI/CD** | GitHub Actions | Pipeline automático de 7 jobs |
 | **Segurança Imagem** | Trivy | Scan de vulnerabilidades CRITICAL |
 | **Compute** | EC2 t3.micro | Servidor de aplicação em São Paulo |
@@ -286,8 +288,8 @@ O arquivo `terraform/autoscaling.tf` documenta a arquitetura de ASG completament
 
 ### Passo 1: Configurar Secrets no GitHub
 
-> **✅ O bucket S3 e a tabela DynamoDB são criados automaticamente pelo pipeline no primeiro push.**
-> O job `bootstrap-backend` verifica se os recursos existem e os cria caso necessário — 100% idempotente, sem nenhuma ação manual.
+> **✅ O bucket S3 é criado automaticamente pelo pipeline no primeiro push.**
+> O bootstrap está integrado diretamente nos jobs `terraform-plan` e `rollback` — verifica se o bucket existe e o cria caso necessário, de forma 100% idempotente, sem nenhuma ação manual. Não há DynamoDB: usamos o **locking nativo do S3** (Terraform >= 1.10).
 
 Em **Settings → Secrets and variables → Actions**, adicione:
 
