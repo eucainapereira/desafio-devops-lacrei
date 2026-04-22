@@ -348,6 +348,42 @@ jobs:
           echo "stable_tag=$STABLE_TAG" >> $GITHUB_OUTPUT
           echo "🔄 Realizando rollback para imagem: $STABLE_TAG"
 
+      # ── Bootstrap S3 também no rollback ──
+      # O rollback pode ser acionado mesmo quando terraform-plan falhou antes de criar o bucket.
+      - name: Bootstrap — Garantir bucket S3 para o Terraform state
+        run: |
+          BUCKET="lacrei-tfstate-873011686071"
+          REGION="sa-east-1"
+
+          if aws s3api head-bucket --bucket "$BUCKET" --region "$REGION" 2>/dev/null; then
+            echo "✅ Bucket já existe."
+          else
+            echo "🪣 Criando bucket S3 '$BUCKET'..."
+            aws s3api create-bucket \
+              --bucket "$BUCKET" \
+              --region "$REGION" \
+              --create-bucket-configuration LocationConstraint="$REGION"
+
+            aws s3api put-bucket-versioning \
+              --bucket "$BUCKET" \
+              --versioning-configuration Status=Enabled
+
+            aws s3api put-bucket-encryption \
+              --bucket "$BUCKET" \
+              --server-side-encryption-configuration \
+              '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}'
+
+            aws s3api put-public-access-block \
+              --bucket "$BUCKET" \
+              --public-access-block-configuration \
+              'BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true'
+
+            sleep 5
+          fi
+
+          aws s3api list-objects-v2 --bucket "$BUCKET" --region "$REGION" > /dev/null
+          echo "✅ Bucket acessível."
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
@@ -370,3 +406,4 @@ jobs:
             -var="ecr_repository_url=873011686071.dkr.ecr.sa-east-1.amazonaws.com/app-lacrei-saude" \
             -var="alert_email=${{ secrets.ALERT_EMAIL }}" \
             -var="image_tag=${{ steps.get-stable-tag.outputs.stable_tag }}"
+

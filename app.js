@@ -10,7 +10,8 @@ function logRequest(req, res, startTime) {
   const responseTime = Date.now() - startTime;
   const logEntry = {
     timestamp: new Date().toISOString(),
-    level: res.statusCode >= 500 ? "ERROR" : res.statusCode >= 400 ? "WARN" : "INFO",
+    level:
+      res.statusCode >= 500 ? "ERROR" : res.statusCode >= 400 ? "WARN" : "INFO",
     method: req.method,
     url: req.originalUrl,
     status: res.statusCode,
@@ -74,12 +75,14 @@ module.exports = app;
 
 if (require.main === module) {
   app.listen(PORT, () => {
-    console.log(JSON.stringify({
-      timestamp: new Date().toISOString(),
-      level: "INFO",
-      message: `Servidor iniciado`,
-      port: PORT,
-      environment: process.env.NODE_ENV || "development",
-    }));
+    console.log(
+      JSON.stringify({
+        timestamp: new Date().toISOString(),
+        level: "INFO",
+        message: `Servidor iniciado`,
+        port: PORT,
+        environment: process.env.NODE_ENV || "development",
+      }),
+    );
   });
 }
