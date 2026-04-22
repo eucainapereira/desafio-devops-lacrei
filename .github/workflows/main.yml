@@ -4,7 +4,7 @@ on:
   push:
     branches: [ main, master, staging ]
   pull_request:
-    branches: [,]
+    branches: [ main, master ]
 
 # Impede dois deploys simultâneos no mesmo ambiente
 concurrency:
