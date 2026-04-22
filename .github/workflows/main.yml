@@ -358,24 +358,42 @@ jobs:
             --region sa-east-1
 
       # ── Smoke Test: valida se o ALB responde após o deploy ──
+      # A EC2 leva ~3-5 min para instalar Docker, fazer pull da imagem e subir.
+      # Retry: 15 tentativas × 30s = até 7.5 min de espera total.
       - name: Smoke Test — Validar endpoint de saúde
         run: |
-          echo "Aguardando aplicação iniciar..."
-          sleep 60
           ALB_DNS=$(aws elbv2 describe-load-balancers \
             --names lacrei-saude-alb \
             --query "LoadBalancers[0].DNSName" \
             --output text \
             --region sa-east-1)
 
-          echo "Testando endpoint: https://$ALB_DNS/health"
-          HTTP_STATUS=$(curl -sk -o /dev/null -w "%{http_code}" "https://$ALB_DNS/health" || echo "000")
+          echo "🔍 ALB: https://$ALB_DNS/health"
+          echo "⏳ Aguardando aplicação iniciar (até 7.5 min)..."
 
-          if [ "$HTTP_STATUS" != "200" ]; then
-            echo "❌ Smoke test falhou! HTTP Status: $HTTP_STATUS"
-            exit 1
-          fi
-          echo "✅ Smoke test passou! HTTP Status: $HTTP_STATUS"
+          MAX_RETRIES=15
+          RETRY_INTERVAL=30
+          for i in $(seq 1 $MAX_RETRIES); do
+            HTTP_STATUS=$(curl -sk -o /dev/null -w "%{http_code}" \
+              --connect-timeout 10 --max-time 15 \
+              "https://$ALB_DNS/health" || echo "000")
+
+            echo "Tentativa $i/$MAX_RETRIES — HTTP $HTTP_STATUS"
+
+            if [ "$HTTP_STATUS" = "200" ]; then
+              echo "✅ Smoke test passou! HTTP Status: $HTTP_STATUS"
+              exit 0
+            fi
+
+            if [ "$i" -lt "$MAX_RETRIES" ]; then
+              echo "⏳ Aguardando ${RETRY_INTERVAL}s..."
+              sleep $RETRY_INTERVAL
+            fi
+          done
+
+          echo "❌ Smoke test falhou após $MAX_RETRIES tentativas. HTTP Status: $HTTP_STATUS"
+          exit 1
+
 
   # ─────────────────────────────────────────────
   # JOB 7: Rollback automático (em falha do deploy)
