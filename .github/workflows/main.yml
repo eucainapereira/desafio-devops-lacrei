@@ -115,14 +115,11 @@ jobs:
           ECR_REPOSITORY: app-lacrei-saude
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          # Tag do commit SHA (imutável — base do rollback)
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
-          # Tag da branch
           docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:${{ github.ref_name }}
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:${{ github.ref_name }}
 
-          # Tag latest
           docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
 
@@ -156,77 +153,14 @@ jobs:
           fi
 
   # ─────────────────────────────────────────────
-  # JOB 5: Bootstrap do Backend Terraform (S3)
-  # Roda automaticamente antes do primeiro terraform init.
-  # É 100% idempotente: se o bucket já existir, apenas segue.
-  # (DynamoDB não é mais necessário — usamos locking nativo S3 via use_lockfile)
-  # ─────────────────────────────────────────────
-  bootstrap-backend:
-    name: "🪣 Bootstrap Backend (S3)"
-    needs: build-and-push
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: sa-east-1
-
-      - name: Garantir bucket S3 para o Terraform state (idempotente)
-        run: |
-          BUCKET="lacrei-tfstate-production"
-          REGION="sa-east-1"
-
-          if aws s3api head-bucket --bucket "$BUCKET" 2>/dev/null; then
-            echo "✅ Bucket S3 '$BUCKET' já existe — nenhuma ação necessária."
-          else
-            echo "🪣 Criando bucket S3 '$BUCKET'..."
-            aws s3api create-bucket \
-              --bucket "$BUCKET" \
-              --region "$REGION" \
-              --create-bucket-configuration LocationConstraint="$REGION"
-
-            # Habilitar versionamento (permite recuperar states anteriores)
-            aws s3api put-bucket-versioning \
-              --bucket "$BUCKET" \
-              --versioning-configuration Status=Enabled
-
-            # Criptografia AES-256 para o state em repouso
-            aws s3api put-bucket-encryption \
-              --bucket "$BUCKET" \
-              --server-side-encryption-configuration \
-              '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}'
-
-            # Bloquear acesso público ao bucket de state
-            aws s3api put-public-access-block \
-              --bucket "$BUCKET" \
-              --public-access-block-configuration \
-              'BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true'
-
-            # Aguardar o bucket estar totalmente acessível antes de sair
-            echo "⏳ Aguardando bucket estar acessível..."
-            for i in {1..10}; do
-              if aws s3api list-objects-v2 --bucket "$BUCKET" --region "$REGION" 2>/dev/null; then
-                echo "✅ Bucket acessível e pronto."
-                break
-              fi
-              echo "Tentativa $i/10 — aguardando ${i}0s..."
-              sleep 10
-            done
-
-            echo "✅ Bucket S3 criado e configurado com sucesso."
-          fi
-
-
-  # ─────────────────────────────────────────────
-  # JOB 6: Terraform Plan (gate de revisão — produção)
+  # JOB 5: Terraform Plan (gate de revisão — produção)
+  #
+  # O bootstrap do bucket S3 roda aqui mesmo, antes do terraform init,
+  # no mesmo runner e mesma sessão AWS — sem race condition entre jobs.
   # ─────────────────────────────────────────────
   terraform-plan:
     name: "📋 Terraform Plan"
-    needs: bootstrap-backend
+    needs: build-and-push
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
 
@@ -240,27 +174,59 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: sa-east-1
 
+      # ── Bootstrap: cria o bucket S3 se não existir (idempotente) ──
+      # Nome inclui account ID para garantir unicidade global no S3.
+      - name: Bootstrap — Garantir bucket S3 para o Terraform state
+        run: |
+          BUCKET="lacrei-tfstate-873011686071"
+          REGION="sa-east-1"
+
+          echo "🔍 Verificando se o bucket '$BUCKET' existe..."
+          if aws s3api head-bucket --bucket "$BUCKET" --region "$REGION" 2>/dev/null; then
+            echo "✅ Bucket já existe."
+          else
+            echo "🪣 Criando bucket S3 '$BUCKET'..."
+            aws s3api create-bucket \
+              --bucket "$BUCKET" \
+              --region "$REGION" \
+              --create-bucket-configuration LocationConstraint="$REGION"
+
+            aws s3api put-bucket-versioning \
+              --bucket "$BUCKET" \
+              --versioning-configuration Status=Enabled
+
+            aws s3api put-bucket-encryption \
+              --bucket "$BUCKET" \
+              --server-side-encryption-configuration \
+              '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}'
+
+            aws s3api put-public-access-block \
+              --bucket "$BUCKET" \
+              --public-access-block-configuration \
+              'BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true'
+
+            echo "✅ Bucket criado. Aguardando propagação..."
+            sleep 5
+          fi
+
+          # Valida acesso antes de passar para o terraform init
+          aws s3api list-objects-v2 --bucket "$BUCKET" --region "$REGION" > /dev/null
+          echo "✅ Bucket acessível e pronto para o Terraform."
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
-      - name: Verificar acesso ao bucket S3 (aguarda propagação)
-        run: |
-          BUCKET="lacrei-tfstate-production"
-          echo "🔍 Verificando acesso ao bucket S3 antes do terraform init..."
-          for i in {1..12}; do
-            if aws s3api list-objects-v2 --bucket "$BUCKET" --region sa-east-1 2>/dev/null; then
-              echo "✅ Bucket acessível!"
-              exit 0
-            fi
-            echo "⏳ Tentativa $i/12 — aguardando 10s..."
-            sleep 10
-          done
-          echo "❌ Timeout: bucket não ficou acessível em 2 minutos."
-          exit 1
-
-      - name: Terraform Init
+      - name: Terraform Init (com retry)
         working-directory: ./terraform
-        run: terraform init
+        run: |
+          for i in 1 2 3; do
+            echo "⚙️ terraform init — tentativa $i/3..."
+            terraform init && echo "✅ Init concluído." && exit 0
+            echo "⏳ Aguardando 20s antes de tentar novamente..."
+            sleep 20
+          done
+          echo "❌ terraform init falhou após 3 tentativas."
+          exit 1
 
       - name: Terraform Plan
         working-directory: ./terraform
@@ -279,7 +245,7 @@ jobs:
           retention-days: 7
 
   # ─────────────────────────────────────────────
-  # JOB 7: Deploy Produção (main/master)
+  # JOB 6: Deploy Produção (main/master)
   # ─────────────────────────────────────────────
   deploy-production:
     name: "🚀 Deploy Produção"
@@ -306,9 +272,17 @@ jobs:
           name: terraform-plan-${{ github.sha }}
           path: terraform/
 
-      - name: Terraform Init
+      - name: Terraform Init (com retry)
         working-directory: ./terraform
-        run: terraform init
+        run: |
+          for i in 1 2 3; do
+            echo "⚙️ terraform init — tentativa $i/3..."
+            terraform init && echo "✅ Init concluído." && exit 0
+            echo "⏳ Aguardando 20s antes de tentar novamente..."
+            sleep 20
+          done
+          echo "❌ terraform init falhou após 3 tentativas."
+          exit 1
 
       - name: Terraform Apply (usando plano aprovado)
         working-directory: ./terraform
@@ -334,10 +308,10 @@ jobs:
             --query "LoadBalancers[0].DNSName" \
             --output text \
             --region sa-east-1)
-          
+
           echo "Testando endpoint: https://$ALB_DNS/health"
           HTTP_STATUS=$(curl -sk -o /dev/null -w "%{http_code}" "https://$ALB_DNS/health" || echo "000")
-          
+
           if [ "$HTTP_STATUS" != "200" ]; then
             echo "❌ Smoke test falhou! HTTP Status: $HTTP_STATUS"
             exit 1
@@ -345,7 +319,7 @@ jobs:
           echo "✅ Smoke test passou! HTTP Status: $HTTP_STATUS"
 
   # ─────────────────────────────────────────────
-  # JOB 8: Rollback automático (em falha do deploy)
+  # JOB 7: Rollback automático (em falha do deploy)
   # ─────────────────────────────────────────────
   rollback:
     name: "⏪ Rollback Automático"
@@ -377,9 +351,17 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
-      - name: Terraform Init
+      - name: Terraform Init (com retry)
         working-directory: ./terraform
-        run: terraform init
+        run: |
+          for i in 1 2 3; do
+            echo "⚙️ terraform init — tentativa $i/3..."
+            terraform init && echo "✅ Init concluído." && exit 0
+            echo "⏳ Aguardando 20s antes de tentar novamente..."
+            sleep 20
+          done
+          echo "❌ terraform init falhou após 3 tentativas."
+          exit 1
 
       - name: Terraform Apply com imagem estável
         working-directory: ./terraform

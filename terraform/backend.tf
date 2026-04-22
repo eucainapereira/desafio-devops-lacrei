@@ -33,7 +33,7 @@ terraform {
   }
 
   backend "s3" {
-    bucket       = "lacrei-tfstate-production"
+    bucket       = "lacrei-tfstate-873011686071"
     key          = "state/terraform.tfstate"
     region       = "sa-east-1"
     use_lockfile = true   # Locking nativo S3 — não requer DynamoDB (Terraform >= 1.10)
